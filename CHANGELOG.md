@@ -9,3 +9,5 @@
 - 每本笔记本可选 Python 环境(conda / venv / pyenv / 系统 / 手填路径),随 Forsion 安装的 Python 兜底。
 - 右栏:内核里的变量、大纲、Tangu 对话(报错可以一键递过去)。
 - 阅读模式;笔记里按格嵌入结果;文件树右键新建。
+- Tangu 能读、改、跑单元格(`notebook_read` / `notebook_edit` / `notebook_run`;改和跑走「跑命令」那档审批),和页面共用同一个内核。
+- 写盘:Jupyter 写的文件读进再写出逐字节不变(数字的写法也保留);读不懂的文件不写回。

@@ -22,7 +22,9 @@ const NOTEBOOK = { cells: [
   cell('calc', ['x = 6 * 7\n', 'print("hello", x)\n', 'x']),
   cell('plot', ['import matplotlib.pyplot as plt\n', 'plt.plot([1, 4, 9])\n', 'plt.title("squares");']),
   cell('boom', ['1 / 0']),
-], metadata: { kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' }, custom_tool: { keep: true } }, nbformat: 4, nbformat_minor: 5 }
+], metadata: { kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' }, custom_tool: { keep: true, ratio: '__RATIO__' } }, nbformat: 4, nbformat_minor: 5 }
+// Python 写的浮点数 1.0:JS 自己写不出这个样子,手工放进去,用来钉「数字逐字保留」在应用的渲染进程里也成立
+const NB_TEXT = (JSON.stringify(NOTEBOOK, null, 1) + '\n').replace('"__RATIO__"', '1.0')
 
 async function main() {
   for (const f of ['main.js', 'tangu-plugins/notebook-kernel/dist/index.js']) if (!fs.existsSync(path.join(ROOT, f))) throw new Error(`缺 ${f} —— 先 npm run build`)
@@ -30,7 +32,7 @@ async function main() {
   const userData = path.join(home, 'userdata'); const vault = path.join(home, 'Vault'); const dir = path.join(vault, '分析')
   fs.mkdirSync(dir, { recursive: true })
   const nbFile = path.join(dir, NB)
-  fs.writeFileSync(nbFile, JSON.stringify(NOTEBOOK, null, 1) + '\n')
+  fs.writeFileSync(nbFile, NB_TEXT)
   // 一本不怀好意的笔记本:序号写成 HTML、输出里带脚本和 onerror。打开它不许执行任何东西。
   const EVIL = { cells: [{ cell_type: 'code', execution_count: '<img src=x onerror="window.__pwned=1">', id: 'evil', metadata: {}, source: ['1'], outputs: [
     { output_type: 'execute_result', execution_count: 1, metadata: {}, data: { 'text/html': ['<b id="kept">kept</b><script>window.__pwned=2</script><img src="x" onerror="window.__pwned=3"><iframe srcdoc="<script>parent.__pwned=4</script>"></iframe><a href="javascript:window.__pwned=5">x</a><style>@import url(http://127.0.0.1:9/x.css); b { background: url(http://127.0.0.1:9/y) }</style>'], 'text/plain': ['x'] } },
@@ -83,7 +85,7 @@ async function main() {
     ok('页面在标签栏下面,不盖住它', geo.barTop >= geo.tabBottom - 2 && Math.abs(geo.barTop - geo.hostTop) < 1 && geo.hostH > 400, geo)
     ok('文字格里只有文字,没有宿主编辑器自带的那排切换按钮', await win.evaluate(() => [...document.querySelectorAll('.nb-md button[aria-pressed]')].every((b) => b.getBoundingClientRect().height === 0) && !/Markdown 源码/.test(document.querySelector('.nb-md').innerText)))
     await shot('0-open')
-    ok('打开不改文件(没人动过就不写盘)', fs.readFileSync(nbFile, 'utf8') === JSON.stringify(NOTEBOOK, null, 1) + '\n')
+    ok('打开不改文件(没人动过就不写盘)', fs.readFileSync(nbFile, 'utf8') === NB_TEXT)
     const C = (id) => win.locator(`.nb [data-cell="${id}"]`)
     const kernelBtn = win.locator('.nb .nb-kernel')
     ok('引擎连上后顶栏出现内核按钮(全新 home 要等引擎播种)', !!(await until(async () => await kernelBtn.count(), 150_000, 1000)), await win.locator('.nb-bar').innerText().catch(() => ''))
@@ -98,7 +100,7 @@ async function main() {
     ok('内核按钮:自带 Python,绿点', /Forsion 自带 · Python 3\.\d+/.test(await kernelBtn.innerText()) && (await kernelBtn.getAttribute('class')).includes('idle'), await kernelBtn.innerText())
     const disk1 = await until(async () => { const c = JSON.parse(fs.readFileSync(nbFile, 'utf8')).cells[1]; return c.execution_count === 1 ? c : null }, 5000)
     ok('结果已经在盘上:execution_count、流输出、结果值(一行一个元素)', !!disk1 && JSON.stringify(disk1.outputs) === JSON.stringify([{ name: 'stdout', output_type: 'stream', text: ['hello 42\n'] }, { data: { 'text/plain': ['42'] }, execution_count: 1, metadata: {}, output_type: 'execute_result' }]), disk1 && disk1.outputs)
-    ok('别的工具写的元数据还在', JSON.parse(fs.readFileSync(nbFile, 'utf8')).metadata.custom_tool?.keep === true)
+    ok('别的工具写的元数据还在,数字的写法也没变(1.0 还是 1.0)', JSON.parse(fs.readFileSync(nbFile, 'utf8')).metadata.custom_tool?.keep === true && fs.readFileSync(nbFile, 'utf8').includes('"ratio": 1.0'), String(fs.readFileSync(nbFile, 'utf8').match(/"ratio": [^\n]*/)))
     ok('变量面板:x = 42', !!(await until(async () => /x\s*int\s*42/.test((await win.locator('.nb-side').first().innerText()).replace(/\n/g, ' ')), 5000)), await win.locator('.nb-side').first().innerText().catch(() => ''))
 
     // ── 全部运行:出图、报错 ──
@@ -113,6 +115,9 @@ async function main() {
     const disk2 = await until(async () => { const cs = JSON.parse(fs.readFileSync(nbFile, 'utf8')).cells; return cs[3].outputs.length ? cs : null }, 5000)
     ok('盘上:图是 image/png(带显示尺寸),报错是 error 输出', !!disk2 && typeof disk2[2].outputs.at(-1).data['image/png'] === 'string' && disk2[2].outputs.at(-1).metadata['image/png']?.width > 0 && disk2[3].outputs[0].ename === 'ZeroDivisionError', disk2 && disk2[2].outputs.map((o) => Object.keys(o.data || {})))
     await shot('1-ran')
+    // 深色下也拍一张(观感自查用)
+    const setMode = (mode) => win.evaluate((m) => { const r = document.documentElement; r.dataset.mode = m; r.classList.toggle('dark', m === 'dark') }, mode)
+    await setMode('dark'); await C('calc').scrollIntoViewIfNeeded(); await win.waitForTimeout(500); await shot('1-ran-dark'); await setMode('light')
 
     // ── 菜单:跟着按钮走(缩放下也不偏) ──
     const near = async (btn, menu) => { const b = await btn.boundingBox(); const m = await menu.boundingBox(); return { dr: Math.abs((b.x + b.width) - (m.x + m.width)), gap: m.y - (b.y + b.height), up: (b.y) - (m.y + m.height) } }

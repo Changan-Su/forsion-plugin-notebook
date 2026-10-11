@@ -695,10 +695,7 @@ function notebookTools(host) {
   const fail = (e) => `Error: ${e instanceof Error ? e.message : String(e)}`;
   const common = {
     mode: "host",
-    isEnabledFor: (profile) => profile.capabilities.hostExec,
-    deferred: true,
-    deferGroup: "notebook",
-    deferHint: "Jupyter notebooks (.ipynb): read cells with their outputs, edit a cell, run cells in the notebook's live kernel. Use these instead of reading or editing the .ipynb JSON directly."
+    isEnabledFor: (profile) => profile.capabilities.hostExec
   };
   return [
     {

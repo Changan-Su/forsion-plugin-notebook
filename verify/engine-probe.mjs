@@ -128,7 +128,7 @@ const nb2 = join(dir, 'b.ipynb')
 const J = (cells, minor = 5) => JSON.stringify({ cells, metadata: { keep: { me: 1 } }, nbformat: 4, nbformat_minor: minor }, null, 1) + '\n'
 writeFileSync(nb2, J([{ cell_type: 'markdown', id: 'intro', metadata: {}, source: ['# 标题'] }, { cell_type: 'code', execution_count: null, id: 'c1', metadata: { tags: ['t'] }, outputs: [], source: ['y = 20\n', 'y + 1'] }]))
 ok('三件工具都在,改和跑走「跑命令」那档审批,读不用', ['notebook_read', 'notebook_edit', 'notebook_run'].every((n) => tools[n]) && tools.notebook_edit.capabilities.approval === 'command' && tools.notebook_run.capabilities.approval === 'command' && !tools.notebook_read.capabilities.approval, Object.keys(tools))
-ok('工具说明是英文', provider.tools().every((d) => !/[\u4e00-\u9fff]/.test(JSON.stringify(d.definition) + (d.deferHint ?? ''))))
+ok('工具说明是英文,直接在工具面里(不用模型先去解锁)', provider.tools().every((d) => !/[\u4e00-\u9fff]/.test(JSON.stringify(d.definition) ) && !d.deferred))
 let out = await tools.notebook_read.execute({ path: 'b.ipynb' }, tctx)
 ok('读:按相对路径,列出每格的位置 / id / 类型 / 源码', /2 cells/.test(out) && /\[1\] markdown id=intro\n# 标题/.test(out) && /\[2\] code id=c1\ny = 20\ny \+ 1/.test(out), out)
 out = await tools.notebook_read.execute({ path: '../etc/passwd' }, tctx)

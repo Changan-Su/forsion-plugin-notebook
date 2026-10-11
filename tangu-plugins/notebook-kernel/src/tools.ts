@@ -89,9 +89,6 @@ export function notebookTools(host: ToolHost): ToolDef[] {
   const common = {
     mode: 'host' as const,
     isEnabledFor: (profile: { capabilities: { hostExec: boolean } }) => profile.capabilities.hostExec,
-    deferred: true,
-    deferGroup: 'notebook',
-    deferHint: 'Jupyter notebooks (.ipynb): read cells with their outputs, edit a cell, run cells in the notebook\'s live kernel. Use these instead of reading or editing the .ipynb JSON directly.',
   };
   return [
     {
