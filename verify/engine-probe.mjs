@@ -80,6 +80,46 @@ await new Promise((res) => setTimeout(res, 3000))
 ok('关闭后 3 秒:吞中断的死循环也没留下进程', !alive(), alive())
 r = await call('/events', { nb, since: 0, wait: 0 }); ok('关闭后查事件不报错', r.state === 'dead' && r.code === 200, r)
 
+// ── 评审补的几条 ──
+const { chmodSync, mkdirSync } = await import('node:fs')
+// 启动途中关闭:不许过后又冒出一个进程(更不许退回自带的再起一个)
+const slow = join(dir, 'slowpy'); writeFileSync(slow, '#!/bin/sh\nif [ "$1" = "-c" ]; then echo 3.12.0; exit 0; fi\nexec sleep 60\n'); chmodSync(slow, 0o755)
+const nb3 = join(dir, 'c.ipynb'); writeFileSync(nb3, '{}')
+const opening = call('/open', { nb: nb3, python: slow })
+await new Promise((res) => setTimeout(res, 1200))
+r = await call('/shutdown', { nb: nb3 }); const opened = await opening
+await new Promise((res) => setTimeout(res, 2500))
+const stray = () => execSync(`pgrep -f "${join(kdir, 'python', 'runner.py')}" || true`).toString().trim()
+ok('启动途中关闭:启动请求马上以「没起来」结束,过后也没有冒出进程', opened.state === 'dead' && !opened.fellBack && !stray(), { opened, stray: stray() })
+// 代码里起的子进程:关内核时一起收掉;中断也传得到
+r = await call('/open', { nb: nb3 }); since = r.head
+const drain3 = async (until, ms = 20000) => { const all = []; const t0 = Date.now(); for (;;) { const x = await call('/events', { nb: nb3, since, wait: 500 }); since = x.events.at(-1)?.seq ?? since; all.push(...x.events); if (until(all, x) || Date.now() - t0 > ms) return all } }
+await call('/exec', { nb: nb3, cells: [{ cell: 'p', code: 'import subprocess, sys\np = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])\nprint(p.pid)' }] })
+let ev3 = await drain3((all) => all.some((e) => e.t === 'done'))
+const childPid = Number(ev3.filter((e) => e.t === 'stream').map((e) => e.text).join('').trim())
+const aliveP = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
+ok('代码里起了一个子进程', childPid > 0 && aliveP(childPid), ev3)
+await call('/exec', { nb: nb3, cells: [{ cell: 'q', code: '!sleep 30' }] })
+await drain3((all) => all.some((e) => e.t === 'start' && e.cell === 'q')); await new Promise((res) => setTimeout(res, 600))
+const tq = Date.now(); await call('/interrupt', { nb: nb3 }); ev3 = await drain3((all) => all.some((e) => e.t === 'done' && e.cell === 'q'), 8000)
+ok('中断传得到 !cmd 起的进程(不用等它自己跑完)', Date.now() - tq < 5000 && ev3.some((e) => e.t === 'done' && e.cell === 'q'), `${Date.now() - tq}ms`)
+await call('/shutdown', { nb: nb3 }); await new Promise((res) => setTimeout(res, 2500))
+ok('关内核后子进程也没了', !aliveP(childPid))
+// 同一个文件夹里两个环境,指向同一个解释器:都列出来,选哪个起的就是哪个
+if (process.platform !== 'win32') {
+  const vdir = join(dir, 'proj'); mkdirSync(vdir); const nb4 = join(vdir, 'd.ipynb'); writeFileSync(nb4, '{}')
+  for (const n of ['.venv', 'venv']) execSync(`"${process.env.TANGU_PYTHON_BIN}" -m venv --without-pip "${join(vdir, n)}"`)
+  r = await call('/envs', { nb: nb4 })
+  const venvs = r.envs.filter((e) => e.kind === 'venv').map((e) => e.label)
+  ok('两个 venv 都在列表里(不因为指向同一个解释器被并成一个)', venvs.includes('.venv') && venvs.includes('venv'), r.envs.map((e) => [e.label, e.kind, e.path]))
+  r = await call('/open', { nb: nb4, python: join(vdir, 'venv', 'bin', 'python') }); since = r.head
+  await call('/exec', { nb: nb4, cells: [{ cell: 'v', code: 'import sys; print(sys.prefix)' }] })
+  const all4 = []; for (let i = 0; i < 40 && !all4.some((e) => e.t === 'done'); i++) { const x = await call('/events', { nb: nb4, since, wait: 500 }); since = x.events.at(-1)?.seq ?? since; all4.push(...x.events) }
+  const prefix = all4.filter((e) => e.t === 'stream').map((e) => e.text).join('').trim()
+  ok('选了第二个 venv,起来的就是它(不是第一个,也不是自带的)', /\/proj\/venv$/.test(prefix) && r.python?.kind === 'venv' && !r.fellBack, { prefix, python: r.python, fellBack: r.fellBack })
+  await call('/shutdown', { nb: nb4 })
+}
+
 // ── Tangu 的三件工具(直接调 execute,不经模型) ──
 const { readFileSync } = await import('node:fs')
 const tools = Object.fromEntries(provider.tools().map((d) => [d.name, d]))

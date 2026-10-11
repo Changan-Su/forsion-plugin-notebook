@@ -7,7 +7,7 @@
 import css from './style.css'
 import { NotebookView, allViews, hasRight, openPanel } from './view'
 import { mountChat, mountOutline, mountVars } from './panels'
-import { NotebookError, emptyNotebook, parse, serialize, source } from './nb'
+import { NotebookError, embedTarget, emptyNotebook, parse, serialize, source } from './nb'
 import { renderOutputs } from './outputs'
 import { esc, icon } from './icons'
 import { t } from './i18n'
@@ -60,15 +60,12 @@ ctx.registerFileCreator({
 
 // `![[分析/结果.ipynb#<格子 id>]]`:画那一格上次运行的结果(只读;要更新就打开笔记本再跑一次)。
 // 不带 #:一张写着文件名和格数的小卡片。宿主把整条 target(连同 #…)交过来问 match,所以正则要放过锚点。
-const EMBED = /^(.+\.ipynb)(?:#([^|]*))?(?:\|.*)?$/i
 ctx.registerEmbedRenderer({
   id: 'ipynb',
-  match: (target) => EMBED.test(target),
+  match: (target) => !!embedTarget(target),
   mount(el, embed) {
     injectCss()
-    const m = EMBED.exec(embed.target)
-    const path = m?.[1] ?? embed.target
-    const anchor = m?.[2] ?? ''
+    const { path, anchor } = embedTarget(embed.target) ?? { path: embed.target, anchor: '' }
     const box = document.createElement('div'); box.className = 'nb-embed'
     el.replaceChildren(box)
     let last: string | null | undefined

@@ -10,7 +10,7 @@ import { python } from '@codemirror/lang-python'
 import { HighlightStyle, bracketMatching, indentOnInput, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
-import { NotebookError, OutputSink, headings, ids, newCell, parse, serialize, setSource, source, type Cell, type Notebook, type RunEvent } from './nb'
+import { NotebookError, OutputSink, headings, ids, newCell, parse, retype, serialize, setSource, source, type Cell, type Notebook, type RunEvent } from './nb'
 import { renderOutputs } from './outputs'
 import { esc, icon } from './icons'
 import { t } from './i18n'
@@ -33,7 +33,7 @@ interface KernelStatus {
   error?: string
   head: number
 }
-interface Poll extends KernelStatus { events: (RunEvent & { seq: number })[]; gap: boolean }
+interface Poll extends KernelStatus { events: (RunEvent & { seq: number })[]; gap: boolean; current: string | null; queue: string[] }
 
 const ENGINE = 'notebook-kernel'
 const post = <T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> => ctx.tangu!.request!(ENGINE, path, { method: 'POST', body, signal }) as Promise<T>
@@ -111,8 +111,10 @@ export class NotebookView {
   vars: Variable[] = []
   kernel: KernelStatus | null = null
   private since = 0
-  private polling = false
   private hostTries = 0
+  private readSeq = 0
+  private pollGen = 0
+  private runSeq = 0
   private asked = false
   private opening: Promise<boolean> | null = null
   private dead = false
@@ -158,9 +160,11 @@ export class NotebookView {
   // ── 读、写 ──────────────────────────────────────────────────────────────────────────────────────
 
   private async load(): Promise<void> {
+    const my = ++this.readSeq
     let text: string | null = null
     try { text = await ctx.app.readFile(this.path) } catch { /* 读不到,下面报 */ }
-    if (this.dead) return
+    // 这次读盘期间又有更新的读盘开始了、或者已经有内容并且人动过了:这份读数作废(它可能比手上的旧)。
+    if (this.dead || my !== this.readSeq || (this.nb && (this.dirty || this.saving))) return
     if (text == null) { this.fail = t('load.missing'); this.paint(); return }
     this.adopt(text)
   }
@@ -185,8 +189,9 @@ export class NotebookView {
   /** 文件在盘上变了(别的程序、同步、Tangu 改的)。自己刚写的不算;手上有没存的改动、或有格子正在跑时先不动。
    *  ponytail: 手上有没存的改动时以手上的为准(下一次保存盖过去);要做合并得按格比对,等真有人撞上再说。 */
   private async onDisk(): Promise<void> {
+    const my = ++this.readSeq
     const text = await ctx.app.readFile(this.path).catch(() => null)
-    if (this.dead || text == null || text === this.lastWritten || this.dirty || this.saving) return
+    if (this.dead || my !== this.readSeq || text == null || text === this.lastWritten || this.dirty || this.saving) return
     if (this.busy) { this.reloadPending = true; return }
     this.adopt(text)
   }
@@ -194,6 +199,7 @@ export class NotebookView {
   private touch(): void {
     if (!this.nb) return
     this.dirty = true
+    this.readSeq++ // 正在路上的读盘结果作废:它读到的是这次改动之前的文件
     clearTimeout(this.saveTimer)
     this.saveTimer = setTimeout(() => void this.save(), 800)
   }
@@ -301,7 +307,7 @@ export class NotebookView {
       u.bad = (cell.outputs ?? []).some((o) => o.output_type === 'error')
       const fold = document.createElement('button'); fold.className = 'nb-fold'; fold.dataset.a = 'fold'
       if (this.read) el.append(fold, code, u.out); else el.append(u.gut, bar, code, u.out)
-      const run = (advance: boolean) => (): boolean => { void this.runCells([id]); if (advance) this.focusNext(id); return true }
+      const run = (advance: boolean) => (): boolean => { if (this.read) return true; void this.runCells([id]); if (advance) this.focusNext(id); return true }
       u.editor = new EditorView({
         parent: code,
         state: EditorState.create({
@@ -375,7 +381,7 @@ export class NotebookView {
       ;(u.el.querySelector('.nb-code') as HTMLElement).hidden = !u.shown
       return
     }
-    const n = u.cell.execution_count
+    const n = typeof u.cell.execution_count === 'number' ? u.cell.execution_count : null // 只认数字:这个值来自文件,不能原样拼进 HTML
     u.gut!.innerHTML = u.state === 'run' ? `<span class="spin">${icon('spin')}</span>` : u.state === 'queued' ? `<span class="wait">${icon('clock')}</span>` : u.bad && n != null ? `<span class="bad">[${n}]</span>` : n != null ? `[${n}]` : '[ ]'
     const time = u.state === 'run' ? fmtMs(Date.now() - u.t0) : u.ms != null ? fmtMs(u.ms) : ''
     const more = `<span class="nb-anchor"><button data-a="more" title="${esc(t('cell.more'))}">${icon('more')}</button></span>`
@@ -438,10 +444,8 @@ export class NotebookView {
   private convert(id: string): void {
     const cs = this.nb!.cells; const i = cs.findIndex((c) => c.id === id); const old = cs[i]
     if (!old || this.cells.get(id)?.state !== 'idle') return
-    // 换成一个新对象(id 沿用):代码格特有的 outputs / execution_count 不带过去,别的自定义元数据留着。
-    const next = newCell(old.cell_type === 'code' ? 'markdown' : 'code', new Set(), source(old))
-    next.id = id; next.metadata = old.metadata
-    cs[i] = next
+    // 换成一个新对象(页面靠对象换了没有来决定重画):原来的键都抄过去,只动代码格特有的 outputs / execution_count。
+    cs[i] = retype(old, old.cell_type === 'code' ? 'markdown' : 'code')
     this.afterStructure(id)
   }
 
@@ -501,7 +505,8 @@ export class NotebookView {
     this.paintBar()
     try {
       const s = await post<KernelStatus>('/open', { nb, python: prefs.python[this.path], restart })
-      if (this.dead) return false
+      // 标签在启动途中关掉了:那时发的关闭请求比内核出现得早,这里补一刀,不留进程。
+      if (this.dead) { void post('/shutdown', { nb }).catch(() => {}); return false }
       if (restart) { this.resetRuns(); this.vars = []; this.changed() }
       this.since = s.head
       this.applyStatus(s)
@@ -528,36 +533,45 @@ export class NotebookView {
     // 先标成排队:起内核要一两秒,这段时间里按钮不该还能再点一次。
     for (const u of cells) { u.state = 'queued'; this.paintCell(u) }
     this.paintBar()
+    const seq = this.runSeq
     const ok = await this.ensureKernel()
     try {
-      if (!ok) throw new Error('kernel')
-      await post('/exec', { nb: this.abs, cells: cells.map((u) => ({ cell: u.cell.id, code: source(u.cell) })) })
+      if (!ok || seq !== this.runSeq) throw new Error('kernel') // 起内核的这一两秒里按了中断:这次不跑了
+      const r = await post<{ accepted?: string[] }>('/exec', { nb: this.abs, cells: cells.map((u) => ({ cell: u.cell.id, code: source(u.cell) })) })
+      // 引擎一次最多收 2000 格:没收下的回到「没在跑」,不然它们永远显示排队。
+      const got = new Set(r.accepted ?? [])
+      for (const u of cells) if (u.state === 'queued' && !got.has(u.cell.id!)) { u.state = 'idle'; this.paintCell(u) }
     } catch (e) {
       for (const u of cells) if (u.state === 'queued') { u.state = 'idle'; this.paintCell(u) }
       this.paintBar()
-      if (ok) ctx.notify?.(t('kernel.failed', { reason: errText(e) }), { level: 'error' })
+      if (ok && seq === this.runSeq) ctx.notify?.(t('kernel.failed', { reason: errText(e) }), { level: 'error' })
     }
   }
 
   private async poll(): Promise<void> {
-    if (this.polling) return
-    this.polling = true
+    // 每次调用都开新的一轮,旧的那一轮(连同它还在路上的回音)作废:重启之后,旧回音里的「已关闭」不能把新内核标成死的。
+    const gen = ++this.pollGen
     try {
-      while (!this.dead && this.kernel && this.kernel.state !== 'dead') {
+      while (!this.dead && gen === this.pollGen && this.kernel && this.kernel.state !== 'dead') {
         const r = await post<Poll>('/events', { nb: this.abs, since: this.since, wait: 10_000 }, this.abort.signal)
-        if (this.dead) return
+        if (this.dead || gen !== this.pollGen) return
         for (const ev of r.events) { this.since = ev.seq; this.onEvent(ev) }
-        if (r.gap) this.since = Math.max(this.since, r.head)
+        if (r.gap) {
+          // 落后太多,中间的事件已经被挤掉了:页面上还标着在跑 / 排队、引擎那边却已经没有的格子,收回来(它们的输出不全,不落盘)。
+          this.since = Math.max(this.since, r.head)
+          for (const u of this.cells.values()) if (u.state !== 'idle' && r.current !== u.cell.id && !r.queue.includes(u.cell.id!)) { u.state = 'idle'; this.paintCell(u) }
+          if (!this.busy) { this.stopTick(); this.paintBar() }
+        }
         if (r.state !== this.kernel?.state || r.python?.path !== this.kernel?.python?.path || r.fellBack?.wanted !== this.kernel?.fellBack?.wanted) this.applyStatus(r)
         if (r.state === 'dead') this.resetRuns()
       }
     } catch {
-      if (!this.dead) {
+      if (!this.dead && gen === this.pollGen) {
         // 引擎重启了、或者这本的内核被回收了:当成断开。输出留着,下次运行重新起。
         this.kernel = null; this.resetRuns(); this.paintBar()
         ctx.notify?.(t('kernel.lost'), { level: 'warning' })
       }
-    } finally { this.polling = false }
+    }
   }
 
   private onEvent(ev: RunEvent): void {
@@ -580,7 +594,11 @@ export class NotebookView {
       u.state = 'idle'
       this.paintCell(u); this.paintOutputs(u)
       if (!this.busy) { this.stopTick(); this.paintBar(); if (this.reloadPending) { this.reloadPending = false; void this.onDisk() } }
-    } else if (u.state === 'run' && u.sink?.apply(ev)) this.paintOutputs(u)
+    } else if (u.sink?.apply(ev)) {
+      this.paintOutputs(u)
+      // 这一格已经报过「跑完」之后才到的输出(后台线程打印的):并进去,按跑完的样子整理好再存一次。
+      if (u.state !== 'run') { u.sink.finish(typeof u.cell.execution_count === 'number' ? u.cell.execution_count : null); this.touch() }
+    }
   }
 
   private startTick(): void {
@@ -588,7 +606,7 @@ export class NotebookView {
   }
   private stopTick(): void { clearInterval(this.tick); this.tick = undefined }
 
-  private interrupt(): void { if (this.abs) void post('/interrupt', { nb: this.abs }).catch(() => {}) }
+  private interrupt(): void { this.runSeq++; if (this.abs) void post('/interrupt', { nb: this.abs }).catch(() => {}) }
   private async restart(thenRunAll = false): Promise<void> {
     if (!(await this.ensureKernel(true))) return
     ctx.notify?.(t('kernel.restarted'), { level: 'info' })

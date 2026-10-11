@@ -31,6 +31,11 @@ async function main() {
   fs.mkdirSync(dir, { recursive: true })
   const nbFile = path.join(dir, NB)
   fs.writeFileSync(nbFile, JSON.stringify(NOTEBOOK, null, 1) + '\n')
+  // 一本不怀好意的笔记本:序号写成 HTML、输出里带脚本和 onerror。打开它不许执行任何东西。
+  const EVIL = { cells: [{ cell_type: 'code', execution_count: '<img src=x onerror="window.__pwned=1">', id: 'evil', metadata: {}, source: ['1'], outputs: [
+    { output_type: 'execute_result', execution_count: 1, metadata: {}, data: { 'text/html': ['<b id="kept">kept</b><script>window.__pwned=2</script><img src="x" onerror="window.__pwned=3"><iframe srcdoc="<script>parent.__pwned=4</script>"></iframe><a href="javascript:window.__pwned=5">x</a><style>@import url(http://127.0.0.1:9/x.css); b { background: url(http://127.0.0.1:9/y) }</style>'], 'text/plain': ['x'] } },
+    { output_type: 'error', ename: '<img src=x onerror="window.__pwned=6">', evalue: '<script>window.__pwned=7</script>', traceback: ['<img src=x onerror="window.__pwned=8">'] }] }], metadata: {}, nbformat: 4, nbformat_minor: 5 }
+  fs.writeFileSync(path.join(dir, '恶意.ipynb'), JSON.stringify(EVIL, null, 1) + '\n')
   fs.writeFileSync(path.join(vault, `${NOTE}.md`), `## 结果\n\n图直接从笔记本里引过来:\n\n![[分析/${NB}#plot]]\n\n就这些。\n`)
   // 插件原样拷进隔离 home 的 plugins/(引擎不认符号链接;带 fileExtensions 的插件也不能走开发加载)
   const dest = path.join(home, 'plugins', 'notebook'); fs.mkdirSync(dest, { recursive: true })
@@ -154,6 +159,14 @@ async function main() {
     await win.waitForSelector('.nb [data-a="runall"]', { timeout: 5000 })
     ok('切回编辑:内核还在(没被重启)', /Python 3/.test(await kernelBtn.innerText()))
     ok('运行期间有 Python 进程', !!runners())
+
+    // ── 不怀好意的笔记本 ──
+    await row('恶意').click()
+    await win.waitForSelector('.nb [data-cell="evil"]', { timeout: 20_000 }); await win.waitForTimeout(1200)
+    const evil = await win.evaluate(() => { const c = document.querySelector('.nb [data-cell="evil"]'); const sr = c.querySelector('.nb-html').shadowRoot; return { pwned: window.__pwned, gut: c.querySelector('.nb-gut').innerHTML, kept: !!sr.querySelector('#kept'), bad: sr.querySelectorAll('script, iframe, [onerror], a[href^="javascript"]').length, css: sr.querySelector('style').textContent, lightImgs: c.querySelectorAll('.nb-gut img, .nb-err img, .nb-err script').length } })
+    ok('恶意笔记本:什么都没执行;序号当成没有;脚本 / iframe / onerror / javascript: 链接 / 样式里的外链都被去掉,正常内容留着', evil.pwned === undefined && evil.gut === '[ ]' && evil.kept && evil.bad === 0 && !/url\(http|@import/.test(evil.css) && evil.lightImgs === 0, evil)
+    ok('恶意笔记本:打开不改文件', fs.readFileSync(path.join(dir, '恶意.ipynb'), 'utf8') === JSON.stringify(EVIL, null, 1) + '\n')
+    await row('试验').click(); await win.waitForSelector('.nb [data-cell="calc"]', { timeout: 20_000 })
 
     // ── 笔记里的嵌入 + 关掉后进程退出 ──
     await row(NOTE).click()

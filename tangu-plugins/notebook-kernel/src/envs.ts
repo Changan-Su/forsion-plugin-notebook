@@ -6,7 +6,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, delimiter, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, join, resolve } from 'node:path';
 
 export interface EnvInfo {
   /** absolute path of the interpreter; also its identity */
@@ -105,7 +105,9 @@ export async function listEnvs(nbDir: string): Promise<EnvInfo[]> {
   const b = bundledPython();
   if (b) seen.add(real(b.path));
   for (const c of candidates(nbDir)) {
-    const key = real(c.path);
+    // 系统里的解释器按真实路径去重(python / python3 常是同一个);环境里的按它自己的路径 ——
+    // 两个 venv 的 bin/python 可以是指向同一个解释器的链接,装的包却不一样。
+    const key = c.kind === 'system' ? real(c.path) : `env:${resolve(c.path)}`;
     if (seen.has(key)) continue;
     seen.add(key); list.push(c);
     if (list.length >= 24) break;
@@ -127,9 +129,9 @@ async function describe(c: Omit<EnvInfo, 'ok'>): Promise<EnvInfo> {
 export async function resolveEnv(path: string, nbDir: string): Promise<EnvInfo | null> {
   if (!path) return null;
   const b = bundledPython();
-  if (b && real(b.path) === real(path)) return b;
+  if (b && resolve(b.path) === resolve(path)) return b; // 按路径认:拿自带的 Python 建的 venv 是另一个环境
   if (!existsSync(path)) return null;
-  const known = candidates(nbDir).find((c) => real(c.path) === real(path));
+  const known = candidates(nbDir).find((c) => resolve(c.path) === resolve(path));
   const info = await describe(known ?? { path, label: basename(dirname(dirname(path))) || basename(path), kind: 'custom' });
   return info.ok ? info : null;
 }

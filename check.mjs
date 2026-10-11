@@ -12,7 +12,7 @@ const mod = async (entry) => {
 let bad = 0
 const ok = (label, fn) => { try { fn(); console.log(`✓ ${label}`) } catch (e) { bad++; console.log(`✗ ${label}\n    ${String(e.message).split('\n').slice(0, 6).join('\n    ')}`) } }
 const nbm = await mod('src/nb.ts')
-const { parse, serialize, emptyNotebook, newCell, OutputSink, setSource, source, carriage, stripAnsi, headings, NotebookError, ids } = nbm
+const { parse, serialize, emptyNotebook, newCell, OutputSink, setSource, source, carriage, stripAnsi, headings, NotebookError, ids, retype, embedTarget } = nbm
 
 const jup = readFileSync('verify/fixtures/jupyter.ipynb', 'utf8')
 ok('Jupyter 写的文件:读进来再写出去,一个字节都不变(不认识的键、键序、字符串形式的 source、ANSI、浮点)', () => {
@@ -20,9 +20,22 @@ ok('Jupyter 写的文件:读进来再写出去,一个字节都不变(不认识�
   assert.equal(changed, false)
   assert.equal(serialize(nb), jup)
 })
-ok('已知的边界:数字的写法不保留(1.0 → 1、1e-07 → 1e-7),值不变', () => {
-  const text = '{"cells": [], "metadata": {"a": 1.0, "b": 1e-07}, "nbformat": 4, "nbformat_minor": 5}'
-  assert.deepEqual(JSON.parse(serialize(parse(text).nb)), JSON.parse(text))
+ok('数字逐字保留:1.0、1e-07、超过 2^53 的整数写回去一个字符都不变', () => {
+  const text = '{\n "cells": [],\n "metadata": {\n  "a": 1.0,\n  "b": 1e-07,\n  "big": 9007199254740993,\n  "list": [\n   -0,\n   2.50\n  ]\n },\n "nbformat": 4,\n "nbformat_minor": 5\n}\n'
+  assert.equal(serialize(parse(text).nb), text)
+})
+ok('转换单元格类型:别的工具写的键都留着,只动 outputs / execution_count', () => {
+  const code = { cell_type: 'code', execution_count: 3, id: 'x', metadata: { tags: ['a'] }, outputs: [{ output_type: 'stream', name: 'stdout', text: ['1'] }], source: ['1'], vendor_payload: { annotations: [1, 2] }, attachments: { a: {} } }
+  const md = retype(code, 'markdown')
+  assert.deepEqual(md, { cell_type: 'markdown', id: 'x', metadata: { tags: ['a'] }, source: ['1'], vendor_payload: { annotations: [1, 2] }, attachments: { a: {} } })
+  assert.notEqual(md, code)
+  assert.deepEqual(retype(md, 'code'), { ...md, cell_type: 'code', outputs: [], execution_count: null })
+})
+ok('嵌入目标:路径 / 锚点 / 别名拆得对,别名里带 .ipynb 也不串', () => {
+  assert.deepEqual(embedTarget('分析/a.ipynb#cell|latest.ipynb'), { path: '分析/a.ipynb', anchor: 'cell' })
+  assert.deepEqual(embedTarget('a.IPYNB'), { path: 'a.IPYNB', anchor: '' })
+  assert.deepEqual(embedTarget('a.ipynb|别名'), { path: 'a.ipynb', anchor: '' })
+  assert.equal(embedTarget('a.md#x.ipynb'), null); assert.equal(embedTarget('a.ipynb.md'), null)
 })
 ok('只改一格的源码:其余部分逐行不变', () => {
   const { nb } = parse(jup)

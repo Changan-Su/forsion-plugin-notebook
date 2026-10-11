@@ -108,10 +108,11 @@ const plugin: TanguPlugin = {
       }));
     });
 
-    // 界面没来得及关(窗口崩了、强退)的内核:两小时没人碰就收掉。
+    // 界面没来得及关(窗口崩了、强退)的内核:两小时没人碰就收掉,正忙着的也一样 —— 页面在的话每 10 秒会来问一次,
+    // Tangu 等结果时也在问,所以「没人碰」就是真的没人在看了(否则一个死循环会一直占着 CPU)。
     reaper = setInterval(() => {
       const now = Date.now();
-      for (const [key, k] of kernels) if (now - k.lastTouch > 2 * 3600_000 && k.status().state !== 'busy') { k.stop('shutdown'); kernels.delete(key); }
+      for (const [key, k] of kernels) if (now - k.lastTouch > 2 * 3600_000) { k.stop('shutdown'); kernels.delete(key); }
     }, 10 * 60_000);
     reaper.unref?.();
 

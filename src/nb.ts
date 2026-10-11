@@ -73,12 +73,30 @@ export function newCell(type: 'code' | 'markdown', taken: Set<string>, source = 
     : { cell_type: 'markdown', id: newId(taken), metadata: {}, source: lines(source) }
 }
 
+// 数字逐字保留:JSON.parse 会把 `1.0` 读成 1、把超过 2^53 的整数读歪。写法和 JS 自己写出来不一样的数字,留着原文
+// (JSON.rawJSON,序列化时原样吐回去)。我们自己要当数字读的那几个键除外。
+// 没有这两个接口的老运行时(Node 20 及更早)退回普通解析:那里数字的写法不保留,超大整数会失真。
+const NUMERIC_KEYS = new Set(['nbformat', 'nbformat_minor', 'execution_count', 'width', 'height'])
+const rawJSON = (JSON as unknown as { rawJSON?: (text: string) => unknown }).rawJSON
+function parseJson(text: string): unknown {
+  if (!rawJSON) return JSON.parse(text)
+  return (JSON.parse as (t: string, r: (this: unknown, k: string, v: unknown, c?: { source?: string }) => unknown) => unknown)(text, (k, v, c) =>
+    typeof v === 'number' && c?.source !== undefined && c.source !== JSON.stringify(v) && !NUMERIC_KEYS.has(k) ? rawJSON(c.source) : v)
+}
+
+/** 换单元格的类型:原来的对象照抄一份(别的工具写的键都留着),只动这一类特有的那两个键。 */
+export function retype(old: Cell, type: 'code' | 'markdown'): Cell {
+  const next: Cell = { ...old, cell_type: type }
+  if (type === 'code') { next.outputs = []; next.execution_count = null } else { delete next.outputs; delete next.execution_count }
+  return next
+}
+
 /** 解析。空文件当成一本空笔记本(`touch a.ipynb` 出来的那种);别的读不懂的一律抛 NotebookError,调用方不许写回去。
  *  `changed` = 解析时就动过内容(补了 id);它只说明「下次写盘会带上这些」,不触发写盘。 */
 export function parse(text: string): { nb: Notebook; changed: boolean } {
   if (!text.trim()) return { nb: emptyNotebook(), changed: false }
   let raw: unknown
-  try { raw = JSON.parse(text) } catch (e) { throw new NotebookError('bad', String((e as Error).message)) }
+  try { raw = parseJson(text) } catch (e) { throw new NotebookError('bad', String((e as Error).message)) }
   if (!isObj(raw)) throw new NotebookError('bad', 'not an object')
   if (typeof raw.nbformat === 'number' && raw.nbformat < 4) throw new NotebookError('old', `nbformat ${raw.nbformat}`)
   if (raw.nbformat !== 4 || !Array.isArray(raw.cells) || !raw.cells.every(isObj)) throw new NotebookError('bad', 'not an nbformat 4 notebook')
@@ -105,8 +123,6 @@ const TEXT_MIME = /^text\/|^image\/svg\+xml$|^application\/javascript$/
 
 /** 序列化成 Jupyter 写的样子。不做任何整理:哪里要拆成「一行一个元素」,在改的那一刻就拆好了
  *  (`setSource`、`OutputSink.finish`)—— 没动过的格子,文件里原来是什么样写回去还是什么样。 */
-// ponytail: 数字的写法不保留 —— Python 写的 `1.0` / `1e-07` 写回去是 `1` / `1e-7`(值相同)。只有输出里带 JSON 数据
-// (plotly 那类)的文件、且那一格之外有改动时,diff 里才看得到;要逐字保留得换成不丢写法的 JSON 解析器。
 export const serialize = (nb: Notebook): string => JSON.stringify(nb, null, 1) + '\n'
 
 export const source = (c: Cell): string => joined(c.source)
@@ -191,6 +207,12 @@ export function carriage(s: string): string {
 
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g
 export const stripAnsi = (s: string): string => s.replace(ANSI, '')
+
+/** `![[…]]` 里的目标 → 文件路径和格子锚点。不是 .ipynb 的返回 null。`a.ipynb#cell|别名` 里别名可以随便写。 */
+export function embedTarget(target: string): { path: string; anchor: string } | null {
+  const m = /^([^#|]+\.ipynb)(?:#([^|]*))?(?:\|.*)?$/i.exec(target)
+  return m ? { path: m[1], anchor: m[2] ?? '' } : null
+}
 
 /** 文字格里的标题,给大纲用。跳过代码围栏里的 `#`。 */
 export function headings(nb: Notebook): { cell: string; level: number; text: string }[] {

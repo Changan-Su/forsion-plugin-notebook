@@ -33,6 +33,8 @@ var Kernel = class {
   starting = null;
   generation = 0;
   lastTouch = Date.now();
+  epoch = 0;
+  cancelLaunch = null;
   lastPagePoll = 0;
   /** A notebook page is following this kernel (it long-polls every 10 s): it will write the outputs to the file. */
   attached() {
@@ -62,16 +64,18 @@ var Kernel = class {
     this.stop("restart");
     this.fellBack = void 0;
     this.error = void 0;
+    const epoch = this.epoch;
     this.starting = (async () => {
       if (!target) {
         this.fail("\u6CA1\u6709\u53EF\u7528\u7684 Python:\u81EA\u5E26\u7684\u90A3\u4EFD\u4E0D\u5728,\u7CFB\u7EDF\u91CC\u4E5F\u6CA1\u627E\u5230 python3");
         return;
       }
       const first = await this.launch(target);
-      if (first === true) return;
+      if (first === true || epoch !== this.epoch) return;
       if (this.bundled && target.path !== this.bundled.path) {
         this.log(`interpreter ${target.path} failed (${first}); falling back to bundled`);
         const second = await this.launch(this.bundled);
+        if (epoch !== this.epoch) return;
         if (second === true) {
           this.fellBack = { wanted: target.label || target.path, reason: first };
           this.push({ t: "status" });
@@ -82,10 +86,11 @@ var Kernel = class {
       }
       this.fail(first);
     })();
+    const mine = this.starting;
     try {
-      await this.starting;
+      await mine;
     } finally {
-      this.starting = null;
+      if (this.starting === mine) this.starting = null;
     }
     return this.status();
   }
@@ -97,10 +102,10 @@ var Kernel = class {
   }
   /** Spawn the runner on one interpreter; true when it reported ready, otherwise a short reason. */
   launch(env) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const runner = join(this.pythonDir, "runner.py");
       if (!existsSync(runner)) {
-        resolve2("runner.py \u4E0D\u5728\u63D2\u4EF6\u76EE\u5F55\u91CC");
+        resolve3("runner.py \u4E0D\u5728\u63D2\u4EF6\u76EE\u5F55\u91CC");
         return;
       }
       const penv = {
@@ -124,9 +129,9 @@ var Kernel = class {
       this.state = "starting";
       let proc;
       try {
-        proc = spawn(env.path, [runner], { cwd: dirname(this.nb), env: penv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+        proc = spawn(env.path, [runner], { cwd: dirname(this.nb), env: penv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform !== "win32" });
       } catch (e) {
-        resolve2(`\u8D77\u4E0D\u6765:${e.message}`);
+        resolve3(`\u8D77\u4E0D\u6765:${e.message}`);
         return;
       }
       this.proc = proc;
@@ -134,14 +139,14 @@ var Kernel = class {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        resolve2(r);
+        if (this.cancelLaunch === cancel) this.cancelLaunch = null;
+        resolve3(r);
       };
+      const cancel = () => finish("\u5DF2\u53D6\u6D88");
+      this.cancelLaunch = cancel;
       const timer = setTimeout(() => {
         if (!settled) {
-          try {
-            proc.kill();
-          } catch {
-          }
+          killTree(proc, "SIGKILL");
           finish("30 \u79D2\u5185\u6CA1\u6709\u5C31\u7EEA");
         }
       }, READY_TIMEOUT_MS);
@@ -252,12 +257,7 @@ var Kernel = class {
       return;
     }
     this.send({ op: "interrupt" });
-    if (process.platform !== "win32") {
-      try {
-        this.proc.kill("SIGINT");
-      } catch {
-      }
-    }
+    if (process.platform !== "win32") killTree(this.proc, "SIGINT");
   }
   abortQueue() {
     const q = this.queue;
@@ -275,6 +275,9 @@ var Kernel = class {
   /** Kill the process. `restart` keeps the event log so pollers see the hand-over. */
   stop(why) {
     this.generation++;
+    this.epoch++;
+    this.cancelLaunch?.();
+    this.cancelLaunch = null;
     const p = this.proc;
     this.proc = null;
     this.abortAll("KernelRestarted", why === "restart" ? "\u5185\u6838\u91CD\u542F\u4E86" : "\u5185\u6838\u5173\u95ED\u4E86");
@@ -283,17 +286,8 @@ var Kernel = class {
         p.stdin?.end();
       } catch {
       }
-      const t = setTimeout(() => {
-        try {
-          p.kill("SIGKILL");
-        } catch {
-        }
-      }, 1500);
-      p.once("exit", () => clearTimeout(t));
-      try {
-        p.kill();
-      } catch {
-      }
+      killTree(p, "SIGTERM");
+      setTimeout(() => killTree(p, "SIGKILL"), 1500).unref?.();
     }
     this.state = "dead";
     this.python = null;
@@ -325,11 +319,11 @@ var Kernel = class {
     if (page) this.lastPagePoll = Date.now();
     if (since > this.seq) since = 0;
     if (this.seq <= since && waitMs > 0) {
-      await new Promise((resolve2) => {
+      await new Promise((resolve3) => {
         const done = () => {
           clearTimeout(t);
           this.waiters.delete(done);
-          resolve2();
+          resolve3();
         };
         const t = setTimeout(done, Math.min(waitMs, 15e3));
         this.waiters.add(done);
@@ -341,6 +335,22 @@ var Kernel = class {
     return { events, gap: since > 0 && since + 1 < first, ...this.status() };
   }
 };
+function killTree(p, sig) {
+  try {
+    if (process.platform !== "win32") {
+      if (p.pid) process.kill(-p.pid, sig);
+      return;
+    }
+    if (sig === "SIGKILL" && p.pid) spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }).on("error", () => {
+    });
+    else p.kill(sig);
+  } catch {
+    try {
+      p.kill(sig);
+    } catch {
+    }
+  }
+}
 function approxSize(ev) {
   let n = 200;
   if (typeof ev.text === "string") n += ev.text.length;
@@ -353,7 +363,7 @@ function approxSize(ev) {
 import { execFile } from "node:child_process";
 import { existsSync as existsSync2, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, delimiter as delimiter2, dirname as dirname2, join as join2 } from "node:path";
+import { basename, delimiter as delimiter2, dirname as dirname2, join as join2, resolve } from "node:path";
 var WIN = process.platform === "win32";
 var MIN = [3, 10];
 var versions = /* @__PURE__ */ new Map();
@@ -373,14 +383,14 @@ function bundledPython() {
 function askVersion(py) {
   const hit = versions.get(py);
   if (hit && Date.now() - hit.at < 12e4) return Promise.resolve(hit.version);
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     const env = { ...process.env };
     delete env.PYTHONHOME;
     delete env.PYTHONPATH;
     execFile(py, ["-c", 'import sys;print("%d.%d.%d"%sys.version_info[:3])'], { timeout: 4e3, windowsHide: true, env }, (err, stdout) => {
       const v = !err && /^\d+\.\d+\.\d+/.test(stdout.trim()) ? stdout.trim() : null;
       versions.set(py, { at: Date.now(), version: v });
-      resolve2(v);
+      resolve3(v);
     });
   });
 }
@@ -442,7 +452,7 @@ async function listEnvs(nbDir) {
   const b = bundledPython();
   if (b) seen.add(real(b.path));
   for (const c of candidates(nbDir)) {
-    const key = real(c.path);
+    const key = c.kind === "system" ? real(c.path) : `env:${resolve(c.path)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     list.push(c);
@@ -461,16 +471,16 @@ async function describe(c) {
 async function resolveEnv(path, nbDir) {
   if (!path) return null;
   const b = bundledPython();
-  if (b && real(b.path) === real(path)) return b;
+  if (b && resolve(b.path) === resolve(path)) return b;
   if (!existsSync2(path)) return null;
-  const known = candidates(nbDir).find((c) => real(c.path) === real(path));
+  const known = candidates(nbDir).find((c) => resolve(c.path) === resolve(path));
   const info = await describe(known ?? { path, label: basename(dirname2(dirname2(path))) || basename(path), kind: "custom" });
   return info.ok ? info : null;
 }
 
 // tangu-plugins/notebook-kernel/src/tools.ts
 import { readFile, rename, writeFile } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve as resolve2 } from "node:path";
 
 // src/nb.ts
 var NotebookError = class extends Error {
@@ -502,11 +512,17 @@ function emptyNotebook() {
 function newCell(type, taken, source2 = "") {
   return type === "code" ? { cell_type: "code", execution_count: null, id: newId(taken), metadata: {}, outputs: [], source: lines(source2) } : { cell_type: "markdown", id: newId(taken), metadata: {}, source: lines(source2) };
 }
+var NUMERIC_KEYS = /* @__PURE__ */ new Set(["nbformat", "nbformat_minor", "execution_count", "width", "height"]);
+var rawJSON = JSON.rawJSON;
+function parseJson(text) {
+  if (!rawJSON) return JSON.parse(text);
+  return JSON.parse(text, (k, v, c) => typeof v === "number" && c?.source !== void 0 && c.source !== JSON.stringify(v) && !NUMERIC_KEYS.has(k) ? rawJSON(c.source) : v);
+}
 function parse(text) {
   if (!text.trim()) return { nb: emptyNotebook(), changed: false };
   let raw;
   try {
-    raw = JSON.parse(text);
+    raw = parseJson(text);
   } catch (e) {
     throw new NotebookError("bad", String(e.message));
   }
@@ -612,7 +628,7 @@ var clip = (s) => s.length <= MAX_OUT ? s : `\u2026 (${s.length - MAX_OUT} earli
 ${s.slice(-MAX_OUT)}`;
 function pathOf(args, ctx) {
   const raw = typeof args.path === "string" ? args.path.trim() : "";
-  const p = raw && (isAbsolute(raw) ? resolve(raw) : ctx.cwd ? resolve(ctx.cwd, raw) : "");
+  const p = raw && (isAbsolute(raw) ? resolve2(raw) : ctx.cwd ? resolve2(ctx.cwd, raw) : "");
   if (!p || !/\.ipynb$/i.test(p)) throw new Error("path must point to an .ipynb file (absolute, or relative to the working directory)");
   return p;
 }
@@ -950,7 +966,7 @@ ${nb}`;
     });
     reaper = setInterval(() => {
       const now = Date.now();
-      for (const [key, k] of kernels) if (now - k.lastTouch > 2 * 36e5 && k.status().state !== "busy") {
+      for (const [key, k] of kernels) if (now - k.lastTouch > 2 * 36e5) {
         k.stop("shutdown");
         kernels.delete(key);
       }

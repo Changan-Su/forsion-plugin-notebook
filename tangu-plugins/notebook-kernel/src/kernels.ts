@@ -53,6 +53,8 @@ export class Kernel {
   private starting: Promise<void> | null = null;
   private generation = 0;
   lastTouch = Date.now();
+  private epoch = 0;
+  private cancelLaunch: (() => void) | null = null;
   private lastPagePoll = 0;
   /** A notebook page is following this kernel (it long-polls every 10 s): it will write the outputs to the file. */
   attached(): boolean { return Date.now() - this.lastPagePoll < 20_000; }
@@ -80,21 +82,24 @@ export class Kernel {
     if (same && !opts.restart && this.state !== 'dead') return this.status();
     this.stop('restart');
     this.fellBack = undefined; this.error = undefined;
+    const epoch = this.epoch; // stop() 会让它前进:启动途中被关掉 / 又重启了,这一次启动后面的步骤(退回自带、报失败)都作废
     this.starting = (async () => {
       if (!target) { this.fail('没有可用的 Python:自带的那份不在,系统里也没找到 python3'); return; }
       const first = await this.launch(target);
-      if (first === true) return;
+      if (first === true || epoch !== this.epoch) return;
       if (this.bundled && target.path !== this.bundled.path) {
         // 用户选的那个起不来:退回自带的,并把原因带给界面。
         this.log(`interpreter ${target.path} failed (${first}); falling back to bundled`);
         const second = await this.launch(this.bundled);
+        if (epoch !== this.epoch) return;
         if (second === true) { this.fellBack = { wanted: target.label || target.path, reason: first }; this.push({ t: 'status' }); return; }
         this.fail(second);
         return;
       }
       this.fail(first);
     })();
-    try { await this.starting; } finally { this.starting = null; }
+    const mine = this.starting;
+    try { await mine; } finally { if (this.starting === mine) this.starting = null; }
     return this.status();
   }
 
@@ -121,11 +126,14 @@ export class Kernel {
       this.state = 'starting';
       let proc: ChildProcess;
       try {
-        proc = spawn(env.path, [runner], { cwd: dirname(this.nb), env: penv, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+        // 自成一个进程组(Windows 除外:那边 detached 会弹出控制台窗口):关内核时连同代码里起的子进程一起收掉。
+        proc = spawn(env.path, [runner], { cwd: dirname(this.nb), env: penv, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' });
       } catch (e) { resolve(`起不来:${(e as Error).message}`); return; }
       this.proc = proc;
-      const finish = (r: true | string) => { if (settled) return; settled = true; clearTimeout(timer); resolve(r); };
-      const timer = setTimeout(() => { if (!settled) { try { proc.kill(); } catch { /* gone */ } finish('30 秒内没有就绪'); } }, READY_TIMEOUT_MS);
+      const finish = (r: true | string) => { if (settled) return; settled = true; clearTimeout(timer); if (this.cancelLaunch === cancel) this.cancelLaunch = null; resolve(r); };
+      const cancel = () => finish('已取消');
+      this.cancelLaunch = cancel;
+      const timer = setTimeout(() => { if (!settled) { killTree(proc, 'SIGKILL'); finish('30 秒内没有就绪'); } }, READY_TIMEOUT_MS);
       proc.stdout!.setEncoding('utf8');
       proc.stdout!.on('data', (chunk: string) => {
         buf += chunk;
@@ -215,7 +223,8 @@ export class Kernel {
     if (!this.proc || !this.current) { this.abortQueue(); return; }
     this.send({ op: 'interrupt' });
     // 进程卡在系统调用里(sleep、等网络)时,带内的中断要等它返回才生效;类 Unix 上再补一个真信号。
-    if (process.platform !== 'win32') { try { this.proc.kill('SIGINT'); } catch { /* gone */ } }
+    // 像终端里按 Ctrl-C 一样发给整个进程组:`!cmd` 和代码里起的子进程也一起停。
+    if (process.platform !== 'win32') killTree(this.proc, 'SIGINT');
   }
 
   private abortQueue(): void {
@@ -234,14 +243,15 @@ export class Kernel {
 
   /** Kill the process. `restart` keeps the event log so pollers see the hand-over. */
   stop(why: 'restart' | 'shutdown'): void {
-    this.generation++;
+    this.generation++; this.epoch++;
+    this.cancelLaunch?.(); this.cancelLaunch = null;
     const p = this.proc; this.proc = null;
     this.abortAll('KernelRestarted', why === 'restart' ? '内核重启了' : '内核关闭了');
     if (p) {
       try { p.stdin?.end(); } catch { /* gone */ }
-      const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* gone */ } }, 1500);
-      p.once('exit', () => clearTimeout(t));
-      try { p.kill(); } catch { /* gone */ }
+      // 先客气地请整个进程组退出,1.5 秒后不管运行器自己退没退都强杀一遍:代码里起的子进程可能不理会前一个信号。
+      killTree(p, 'SIGTERM');
+      setTimeout(() => killTree(p, 'SIGKILL'), 1500).unref?.();
     }
     this.state = 'dead'; this.python = null; this.execCells.clear();
     if (why === 'shutdown') { this.error = undefined; this.fellBack = undefined; }
@@ -280,6 +290,15 @@ export class Kernel {
     if (events.length) this.delivered = Math.max(this.delivered, events[events.length - 1].seq);
     return { events, gap: since > 0 && since + 1 < first, ...this.status() };
   }
+}
+
+/** Signal the runner and everything it started. POSIX: its process group; Windows: taskkill /T for the hard kill. */
+function killTree(p: ChildProcess, sig: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
+  try {
+    if (process.platform !== 'win32') { if (p.pid) process.kill(-p.pid, sig); return; }
+    if (sig === 'SIGKILL' && p.pid) spawn('taskkill', ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => {});
+    else p.kill(sig);
+  } catch { try { p.kill(sig); } catch { /* gone */ } }
 }
 
 function approxSize(ev: KernelEvent): number {

@@ -12,7 +12,7 @@ p.stderr.on('data', (c) => { diag += c })
 const next = () => new Promise((r) => waiters.push(r))
 const send = (o) => p.stdin.write(JSON.stringify(o) + '\n')
 let n = 0; let bad = 0
-const run = async (code, opts = {}) => { send({ op: 'exec', id: `c${++n}`, code }); if (opts.interrupt) setTimeout(() => send({ op: 'interrupt' }), opts.interrupt); return next() }
+const run = async (code, opts = {}) => { send({ op: 'exec', id: `c${++n}`, code }); if (opts.interrupt === 0) send({ op: 'interrupt' }); else if (opts.interrupt) setTimeout(() => send({ op: 'interrupt' }), opts.interrupt); return next() }
 const text = (evs, name) => evs.filter((e) => e.t === 'stream' && (!name || e.name === name)).map((e) => e.text).join('')
 const ok = (label, cond, extra = '') => { console.log(`${cond ? '✓' : '✗'} ${label}${cond ? '' : `  ${extra}`}`); if (!cond) bad++ }
 ;(async () => {
@@ -35,6 +35,11 @@ const ok = (label, cond, extra = '') => { console.log(`${cond ? '✓' : '✗'} $
   e = await run('import sys\nprint("err", file=sys.stderr)\n1/0')
   const err = e.find((x) => x.t === 'error')
   ok('报错:有 ename / evalue,回溯不带颜色码', err?.ename === 'ZeroDivisionError' && err.traceback.length > 0 && !/\x1b\[/.test(err.traceback.join('')) && /err/.test(text(e, 'stderr')) && e.at(-1).ok === false, JSON.stringify(e).slice(0, 400))
+  // 刚发出去就中断(格子的代码还没开始跑,IPython 正在做开跑前的准备):照样停得住,输出里也没有 IPython 的内部报错
+  for (const delay of [0, 1, 3, 8]) {
+    const tq = Date.now(); e = await run('import time\ntime.sleep(20)\nprint("ran to the end")', { interrupt: delay })
+    ok(`发出后 ${delay} 毫秒就中断:马上停,没有跑完,也没有「Error in callback」`, Date.now() - tq < 3000 && e.some((x) => x.t === 'error' && x.ename === 'KeyboardInterrupt') && !e.some((x) => x.t === 'stream' && /ran to the end|Error in callback/.test(x.text)), `${Date.now() - tq}ms ${JSON.stringify(e).slice(0, 300)}`)
+  }
   let t0 = Date.now(); e = await run('import time\nfor i in range(100):\n    print(i); time.sleep(0.1)', { interrupt: 500 })
   ok('中断(Python 循环):很快停下,报 KeyboardInterrupt', Date.now() - t0 < 3000 && e.some((x) => x.t === 'error' && x.ename === 'KeyboardInterrupt'), `${Date.now() - t0}ms`)
   e = await run('x = 41 + 1\nx')

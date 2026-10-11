@@ -13,6 +13,7 @@ Commands:  {"op": "exec", "id": ..., "code": ...} | {"op": "interrupt"} | {"op":
 Events:    ready | fatal | stream | display | result | error | clear | done | vars   (each carries the request "id")
 """
 import _thread
+import ast
 import base64
 import builtins
 import codecs
@@ -20,6 +21,7 @@ import io
 import json
 import os
 import queue
+import signal
 import sys
 import threading
 import time
@@ -35,6 +37,9 @@ _lock = threading.Lock()
 CUR = None   # id of the request being served
 LAST = None  # id of the last exec: output from a background thread that outlives its cell still belongs to it
 BUSY = False
+IN_USER = False      # the cell's own code is running (between IPython's pre- and post-execution machinery)
+INT_PENDING = False  # an interrupt arrived for this cell before its code started: stop it at the gate
+EXECS = 0            # exec requests accepted and not finished yet (queued, starting or running)
 
 
 def _send(obj):
@@ -167,6 +172,52 @@ def _input(prompt=''):
 
 builtins.input = _input
 
+
+# Interrupts. Both paths (the in-band request and an OS SIGINT sent to the process group) end up in this
+# handler on the main thread. While the cell's own code runs it raises KeyboardInterrupt as usual. Before
+# that, IPython is running its pre-execution callbacks, which swallow exceptions ("Error in callback…") and
+# would then run the cell anyway: remember the interrupt instead and refuse the cell at the gate below.
+# Between cells an interrupt means nothing.
+def _on_sigint(signum, frame):
+    global INT_PENDING
+    if IN_USER:
+        signal.default_int_handler(signum, frame)
+    elif EXECS > 0:
+        INT_PENDING = True
+
+
+def _poke_main():
+    """Deliver an interrupt to the main thread. A real signal aimed at that thread, so a blocking call
+    (time.sleep, a socket read) wakes up at once; `interrupt_main` alone only sets a flag that is looked
+    at when the call returns by itself. Windows has no pthread_kill, and there the flag does wake sleeps."""
+    if hasattr(signal, 'pthread_kill'):
+        signal.pthread_kill(threading.main_thread().ident, signal.SIGINT)
+    else:
+        _thread.interrupt_main()
+
+
+signal.signal(signal.SIGINT, _on_sigint)
+
+
+class _Gate(ast.NodeTransformer):
+    """Last stop before a cell's code is compiled and run."""
+
+    def visit(self, node):
+        global IN_USER
+        if INT_PENDING:
+            raise KeyboardInterrupt()  # not an Exception: IPython lets it through to do_exec
+        IN_USER = True
+        return node
+
+
+def _left_user_code(*_a, **_k):
+    global IN_USER
+    IN_USER = False
+
+
+shell.ast_transformers.append(_Gate())
+shell.events.register('post_run_cell', _left_user_code)
+
 _SKIP = (types.ModuleType, types.FunctionType, types.BuiltinFunctionType, types.MethodType, type)
 
 
@@ -198,17 +249,22 @@ def variables():
 
 
 def do_exec(req):
-    global BUSY
+    global BUSY, IN_USER, INT_PENDING, EXECS
     t0 = time.time()
     ok, n = False, None
     BUSY = True
     try:
+        if INT_PENDING:  # interrupted while it was still waiting to start
+            raise KeyboardInterrupt()
         r = shell.run_cell(req.get('code', ''), store_history=True)
         ok, n = bool(r.success), r.execution_count
     except KeyboardInterrupt:
         emit({'t': 'error', 'ename': 'KeyboardInterrupt', 'evalue': '', 'traceback': ['KeyboardInterrupt']})
     finally:
         BUSY = False
+        IN_USER = False
+        INT_PENDING = False
+        EXECS = max(0, EXECS - 1)
     done = {'t': 'done', 'ok': ok, 'n': n, 'ms': int((time.time() - t0) * 1000)}
     for _ in range(3):  # an interrupt landing right here must not swallow the `done`
         try:
@@ -224,23 +280,26 @@ _q = queue.Queue()
 
 
 def _reader():
+    global EXECS
     for line in _cmd:
         try:
             req = json.loads(line)
         except Exception:
             continue
         if req.get('op') == 'interrupt':
-            if BUSY:
-                _thread.interrupt_main()
+            if EXECS > 0:
+                _poke_main()
             continue
+        if req.get('op') == 'exec':
+            EXECS += 1  # counted here, on the thread that also sees the interrupts: no window between "accepted" and "running"
         _q.put(req)
     # stdin closed: the host is gone. A cell that swallows the interrupt (`except: pass` in a loop)
     # would otherwise outlive it for good, so the timer ends the process either way.
-    if BUSY:
+    if EXECS > 0:
         t = threading.Timer(2, lambda: os._exit(0))
         t.daemon = True
         t.start()
-        _thread.interrupt_main()
+        _poke_main()
     _q.put(None)
 
 
