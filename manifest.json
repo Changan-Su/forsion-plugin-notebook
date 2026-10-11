@@ -1,0 +1,13 @@
+{
+  "id": "notebook",
+  "name": "Jupyter 笔记本",
+  "nameEn": "Jupyter Notebook",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "minAppVersion": "2.13.0",
+  "author": "Forsion",
+  "description": "在 Forsion 里打开、编辑、运行 Jupyter 笔记本(.ipynb)。页面像一篇笔记:文字就是文字,代码块下面跟着表格、图表和报错;变量、大纲和 Tangu 对话在右栏。每本笔记本可以选这台电脑上的 Python 环境(conda、venv、pyenv、系统自带的都认),什么都不选、或者选的那个起不来,就用随 Forsion 安装的 Python。% 命令、! 命令、行内图表都能用。文件还是标准的 .ipynb,拿到 Jupyter 或 VS Code 里照样打开。运行需要桌面版,并且库在这台电脑上;别处只能看和改。",
+  "descriptionEn": "Open, edit and run Jupyter notebooks (.ipynb) in Forsion. The page reads like a note: text is text, and each code block is followed by its tables, charts and errors; variables, the outline and a Tangu chat sit in the right sidebar. Each notebook can use a Python environment on this computer (conda, venv, pyenv and system interpreters are found automatically); with nothing picked, or when the picked one fails to start, the Python bundled with Forsion runs it. Magic commands, shell commands and inline charts all work. Files stay standard .ipynb and open in Jupyter or VS Code as usual. Running needs the desktop app with the vault on this computer; elsewhere notebooks can be read and edited.",
+  "main": "main.js",
+  "fileExtensions": [".ipynb"]
+}

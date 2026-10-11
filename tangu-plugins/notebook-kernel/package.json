@@ -1,0 +1,10 @@
+{
+  "name": "notebook-kernel",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Jupyter 笔记本插件的引擎那一半:起 Python 进程、排队执行、找 Python 环境。对核心仅 import type。",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": { "build": "tsc", "typecheck": "tsc --noEmit" }
+}

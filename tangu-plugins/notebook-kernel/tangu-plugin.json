@@ -1,0 +1,8 @@
+{
+  "id": "notebook-kernel",
+  "name": "笔记本内核",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "entry": "dist/index.js",
+  "description": "给 Jupyter 笔记本跑代码:每本打开的笔记本一个 Python 进程,可选本机环境,Forsion 自带的兜底。"
+}

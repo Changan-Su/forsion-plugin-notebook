@@ -1,0 +1,29 @@
+{
+  "name": "forsion-plugin-notebook",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Jupyter 笔记本:在 Forsion 里打开、编辑、运行 .ipynb(构建源;产物 main.js 与 tangu-plugins/notebook-kernel/dist 已提交)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs && npm run build:engine",
+    "build:engine": "tsc -p tangu-plugins/notebook-kernel",
+    "vendor": "node scripts/vendor.mjs",
+    "check": "node check.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run build && npm run check"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/lang-python": "^6.1.7",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.36.0",
+    "@lezer/highlight": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

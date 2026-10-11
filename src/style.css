@@ -1,0 +1,134 @@
+/* Jupyter 笔记本。颜色、字体、圆角全走宿主的变量(跟着当前主题和明暗走),这里不写死任何颜色。
+   菜单外壳用宿主的 .ctx-menu(右键菜单的唯一正典);别的类都是自己的,前缀 nb-。 */
+.nb, .nb-side, .nb-embed { color: var(--text); font-family: var(--font-ui); font-size: var(--ui-font-body, 13px); }
+/* 宿主给的那个元素没有定位:不自己立一个,.nb 的 inset:0 会一路铺到标签栏上面去。 */
+.nb-host { position: relative; height: 100%; }
+.nb { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.nb button, .nb-side button, .nb-embed button { border: 0; background: none; cursor: pointer; font-family: var(--font-ui); color: inherit; padding: 0; }
+.nb svg, .nb-side svg, .nb-embed svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* ── 顶栏 ── */
+.nb-bar { height: 36px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 12px; }
+.nb-seg { position: relative; display: flex; flex: none; height: 24px; width: 118px; margin-right: auto; padding: 2px; border-radius: var(--radius-pill, 999px); background: rgba(0, 0, 0, 0.05); }
+:root.dark .nb-seg { background: rgba(0, 0, 0, 0.24); }
+.nb-seg i { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 2); border-radius: var(--radius-pill, 999px); background: var(--accent-light, var(--overlay-light)); transition: transform 0.3s cubic-bezier(0.32, 1.25, 0.5, 1); }
+.nb-read .nb-seg i { transform: translateX(100%); }
+.nb .nb-seg button { position: relative; z-index: 1; flex: 1 1 0; min-width: 0; border-radius: var(--radius-pill, 999px); font-size: var(--ui-font-caption, 11px); font-weight: 500; letter-spacing: 0.02em; color: var(--text-faint); }
+.nb .nb-seg button.on { color: var(--accent-ink, var(--text)); }
+.nb .nb-btn { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: var(--radius-sm, 6px); font-size: var(--ui-font-meta, 12px); font-weight: 500; color: var(--text-muted); }
+.nb .nb-btn svg { width: 13px; height: 13px; }
+.nb .nb-btn.stop { color: var(--danger); }
+.nb .nb-ibtn { width: 26px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm, 6px); color: var(--text-muted); }
+.nb .nb-btn:hover, .nb .nb-ibtn:hover, .nb .nb-cbar button:hover { background: var(--overlay-light); color: var(--text); }
+.nb .nb-btn.stop:hover, .nb .nb-cbar button.stop:hover { color: var(--danger); }
+.nb-anchor { position: relative; display: inline-flex; }
+.nb .nb-kernel { margin-left: 6px; display: inline-flex; align-items: center; gap: 6px; height: 24px; max-width: 260px; padding: 0 8px 0 9px; border-radius: var(--radius-pill, 999px); border: 1px solid var(--border); font-size: var(--ui-font-meta, 12px); color: var(--text-muted); background: var(--bg-card); }
+.nb .nb-kernel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb .nb-kernel .dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--text-faint); }
+.nb .nb-kernel.idle .dot { background: var(--green); }
+.nb .nb-kernel.busy .dot, .nb .nb-kernel.starting .dot { background: var(--warning); }
+.nb .nb-kernel svg { width: 12px; height: 12px; color: var(--text-faint); }
+.nb-note { margin-left: 8px; font-size: var(--ui-font-meta, 12px); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-scroll { flex: 1; min-height: 0; overflow: auto; }
+.nb-fail { max-width: 520px; margin: 80px auto 0; padding: 0 24px; text-align: center; line-height: 1.7; color: var(--text-muted); }
+
+/* ── 单元格 ── */
+.nb-col { width: 720px; max-width: calc(100% - 150px); margin: 0 auto; padding: 22px 0 45vh; }
+.nb-cell { position: relative; }
+.nb-md { font-family: var(--font-body); font-size: 15px; line-height: 27px; min-height: 27px; }
+/* 宿主的 Markdown 编辑器是给「写稿」做的,顶上带一排「编辑 / 源码 / 预览」切换;放进单元格里只要编辑器本身。
+   ponytail: 认的是「一排带 aria-pressed 的按钮」这个形状(只藏它,不按位置藏,宿主以后去掉这排也不会误伤编辑器);
+   宿主给出不带这排的选项后换成那个选项。 */
+.nb-md .amx-publishing-editor > div:has(> button[aria-pressed]) { display: none !important; } /* 那一排是行内样式写的 display:flex,不加 !important 盖不住 */
+.nb-plain { display: block; width: 100%; box-sizing: border-box; min-height: 56px; resize: vertical; margin: 6px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text); font: 13px/1.7 var(--font-mono); }
+.nb-cc { margin: 14px 0; }
+.nb-gut { position: absolute; left: -54px; top: 0; width: 42px; text-align: right; font: 11px/1.3 var(--font-mono); color: var(--text-faint); padding-top: 17px; user-select: none; }
+.nb-gut .spin { display: inline-flex; color: var(--warning); margin-top: -1px; animation: nb-spin 0.9s linear infinite; }
+.nb-gut .wait { display: inline-flex; margin-top: -1px; }
+.nb-gut .bad { color: var(--danger); }
+@keyframes nb-spin { to { transform: rotate(360deg); } }
+.nb-code { position: relative; border-radius: 8px; background: var(--surface-2, var(--bg-card)); }
+.nb-code .cm-editor { border-radius: 8px; background: none; }
+.nb-code .cm-editor.cm-focused { outline: none; }
+.nb-code .cm-scroller { font: 12.9px/1.7 var(--font-mono); overflow-x: auto; }
+.nb-code .cm-content { padding: 12px 0; caret-color: var(--text); }
+.nb-code .cm-line { padding: 0 16px; }
+.nb-code .cm-cursor { border-left-color: var(--text); }
+.nb-code .cm-matchingBracket { background: var(--overlay-light); outline: none; }
+.nb-cell.sel .nb-code { box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 26%, transparent); }
+/* 每格右上角:用时 · 运行 · 更多。选中或悬停的那格才出现;正在跑、排着队的那格一直在。 */
+.nb-cbar { position: absolute; top: 5px; right: 6px; display: flex; align-items: center; gap: 1px; z-index: 2; opacity: 0; pointer-events: none; }
+.nb-cell:hover > .nb-cbar, .nb-cell.sel > .nb-cbar, .nb-cell.live > .nb-cbar, .nb-cbar.open { opacity: 1; pointer-events: auto; }
+.nb-mdcell > .nb-cbar { top: 1px; right: -34px; padding-left: 10px; }
+.nb-cbar.open { z-index: 60; }
+.nb-cbar .t { margin-right: 6px; font-size: var(--ui-font-caption, 11px); color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nb .nb-cbar button { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm, 6px); color: var(--text-muted); }
+.nb .nb-cbar button.on { background: var(--overlay-light); color: var(--text); }
+.nb .nb-cbar button.stop { color: var(--danger); }
+.nb-cbar svg { width: 13px; height: 13px; }
+.nb-out { margin-top: 10px; }
+.nb-out:empty { display: none; }
+.nb-out > * + * { margin-top: 8px; }
+.nb-html { max-width: 100%; }
+.nb-img { display: block; max-width: 100%; height: auto; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px var(--border); }
+.nb-stream, .nb-text { margin: 0; font: 12.5px/1.65 var(--font-mono); color: var(--text-muted); white-space: pre; padding-left: 16px; max-height: 420px; overflow: auto; }
+.nb-stream.err { color: var(--warning); }
+.nb-cut { font: var(--ui-font-caption, 11px) var(--font-ui); color: var(--text-faint); margin-bottom: 4px; }
+.nb-err { margin-left: 16px; border-left: 2px solid var(--danger); padding: 1px 0 2px 12px; }
+.nb-err .hd { font: 600 13px/1.5 var(--font-mono); color: var(--danger); white-space: pre-wrap; overflow-wrap: anywhere; }
+.nb-err pre { margin: 6px 0 4px; font: 12.5px/1.6 var(--font-mono); color: var(--text-muted); white-space: pre; overflow: auto; max-height: 420px; }
+.nb-act { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.nb .nb-chip, .nb-side .nb-chip, .nb-embed .nb-chip { height: 24px; padding: 0 9px; border-radius: var(--radius-sm, 6px); border: 1px solid var(--border); background: var(--bg-card); font-size: var(--ui-font-meta, 12px); color: var(--text-muted); display: inline-flex; gap: 5px; align-items: center; }
+.nb .nb-chip.pri { background: var(--action-fill); color: var(--on-action); border-color: transparent; }
+.nb-chip svg { width: 13px; height: 13px; }
+.nb .nb-fold, .nb-embed .nb-fold { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: var(--ui-font-meta, 12px); color: var(--text-faint); }
+/* 两格之间:平时看不见,鼠标移上去才出现「+ 代码 / + 文字」;最后一条一直在。 */
+.nb-ins { display: flex; align-items: center; gap: 8px; height: 20px; margin: -10px 0; opacity: 0; transition: opacity 0.12s; position: relative; z-index: 1; }
+.nb-ins:hover, .nb-ins:focus-within, .nb-ins.last { opacity: 1; }
+.nb-ins.last { margin-top: 14px; }
+.nb-ins::before, .nb-ins::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.nb .nb-ins button { height: 20px; padding: 0 8px; border-radius: var(--radius-pill, 999px); border: 1px solid var(--border); background: var(--bg-card); font-size: var(--ui-font-caption, 11px); color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px; }
+.nb-ins svg { width: 11px; height: 11px; }
+.nb-read .nb-cc { margin: 8px 0 14px; } .nb-read .nb-out { margin-top: 6px; } .nb-read .nb-stream, .nb-read .nb-text { padding-left: 0; } .nb-read .nb-err { margin-left: 0; }
+.nb-read .nb-code { margin-top: 6px; }
+
+/* ── 菜单(外壳是宿主的 .ctx-menu;这里只改成跟着按钮走,不用视口坐标 —— 界面缩放时不会偏) ── */
+.nb-menu.ctx-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 50; max-width: none; }
+.nb-menu.ctx-menu.up { top: auto; bottom: calc(100% + 6px); }
+.nb-menu.ctx-menu button { white-space: nowrap; padding: var(--menu-item-pad-block) var(--menu-item-pad-inline); color: var(--text); }
+.nb-menu.ctx-menu button.danger { color: var(--danger); }
+.nb-menu .ctx-check { width: 14px; display: inline-flex; flex: none; }
+.nb-menu svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.nb-menu input { display: block; width: 280px; box-sizing: border-box; margin: 4px; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm, 6px); background: none; color: var(--text); font: var(--ui-font-meta, 12px) var(--font-mono); }
+.nb-menu .nb-menu-note { padding: 6px 8px; font-size: var(--ui-font-meta, 12px); color: var(--text-faint); }
+
+/* ── 右栏 ── */
+.nb-side { padding: 10px 10px 12px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: auto; font-size: 12.5px; }
+.nb-side-h { display: flex; align-items: center; gap: 6px; font-size: var(--ui-font-meta, 12px); font-weight: 500; color: var(--text-muted); padding: 2px 6px 8px; }
+.nb-side-h span { margin-left: auto; font-weight: 400; color: var(--text-faint); }
+.nb-side-empty { padding: 28px 18px; color: var(--text-muted); font-size: var(--ui-font-meta, 12px); line-height: 1.7; text-align: center; }
+.nb-side .nb-var .row { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 6px; border-radius: var(--radius-sm, 6px); text-align: left; cursor: default; }
+.nb-side .nb-var.has .row { cursor: pointer; }
+.nb-var .row svg { width: 12px; height: 12px; color: var(--text-faint); }
+.nb-var:not(.has) .row svg { visibility: hidden; }
+.nb-var .row b { font: 500 12.5px var(--font-mono); overflow: hidden; text-overflow: ellipsis; }
+.nb-var .row em { font-style: normal; color: var(--text-muted); font-size: var(--ui-font-meta, 12px); }
+.nb-var .row span { margin-left: auto; color: var(--text-faint); font: 11.5px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.nb-var.open .row, .nb-side .nb-var.has .row:hover { background: var(--overlay-light); }
+.nb-var .cols { padding: 3px 6px 6px 24px; }
+.nb-var .cols div { display: flex; justify-content: space-between; gap: 8px; height: 22px; align-items: center; font: 11.5px var(--font-mono); color: var(--text-muted); }
+.nb-var .cols em { font-style: normal; color: var(--text-faint); }
+.nb-hint { margin-top: auto; padding: 12px 6px 0; font-size: var(--ui-font-caption, 11px); line-height: 1.6; color: var(--text-faint); }
+.nb-side .nb-ol-item { display: block; width: 100%; height: 28px; line-height: 28px; padding: 0 8px; border-radius: var(--radius-sm, 6px); color: var(--text-muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nb-side .nb-ol-item:hover { background: var(--overlay-light); color: var(--text); }
+.nb-chat { height: 100%; min-height: 0; }
+
+/* ── 笔记里的嵌入 ── */
+.nb-embed { margin: 8px 0 4px; }
+.nb-embed .cap { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: var(--ui-font-meta, 12px); line-height: 1.4; color: var(--text-faint); }
+.nb-embed .cap b { font-weight: 500; color: var(--text-muted); }
+.nb-embed .cap button { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--text-faint); font-size: var(--ui-font-meta, 12px); }
+.nb-embed .cap button:hover { color: var(--text); }
+.nb-embed .cap svg { width: 12px; height: 12px; }
+.nb-embed .nb-stream, .nb-embed .nb-text { padding-left: 0; } .nb-embed .nb-err { margin-left: 0; }
+.nb-embed-empty { font-size: var(--ui-font-meta, 12px); color: var(--text-faint); }

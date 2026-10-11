@@ -1,0 +1,100 @@
+// 界面文案:每条成对给 [中文, English]。渲染时现取语言,切语言后重画即可(见 index.ts 的 subscribeLocale)。
+export const M: Record<string, [string, string]> = {
+  'view.vars': ['变量', 'Variables'],
+  'view.outline': ['大纲', 'Outline'],
+  'view.chat': ['Tangu', 'Tangu'],
+  'new.label': ['新建 Jupyter 笔记本', 'New Jupyter notebook'],
+  'new.name': ['未命名', 'Untitled'],
+
+  'mode.edit': ['编辑', 'Edit'],
+  'mode.read': ['阅读', 'Read'],
+  'bar.runAll': ['全部运行', 'Run all'],
+  'bar.interrupt': ['中断', 'Interrupt'],
+  'bar.restart': ['重启内核', 'Restart kernel'],
+  'bar.panel': ['变量、大纲和 Tangu', 'Variables, outline and Tangu'],
+  'bar.readOnly': ['只读 · 输出来自上次运行', 'Read-only · outputs are from the last run'],
+  'bar.noRun': ['这里只能看和改,不能运行:运行需要桌面版,并且库在这台电脑上', 'You can read and edit here but not run: running needs the desktop app with the vault on this computer'],
+
+  'kernel.off': ['未启动', 'not started'],
+  'kernel.starting': ['正在启动…', 'starting…'],
+  'kernel.busy': ['运行中', 'running'],
+  'kernel.dead': ['已关闭', 'stopped'],
+  'kernel.bundled': ['Forsion 自带', 'Bundled with Forsion'],
+  'kernel.head': ['这本笔记用哪个 Python', 'Python for this notebook'],
+  'kernel.finding': ['正在找这台电脑上的 Python…', 'Looking for Python on this computer…'],
+  'kernel.fallback': ['兜底', 'fallback'],
+  'kernel.kind.venv': ['这个文件夹', 'this folder'],
+  'kernel.kind.conda': ['conda', 'conda'],
+  'kernel.kind.pyenv': ['pyenv', 'pyenv'],
+  'kernel.kind.system': ['系统', 'system'],
+  'kernel.kind.custom': ['手动指定', 'custom'],
+  'kernel.old': ['需要 3.10 以上', 'needs 3.10 or newer'],
+  'kernel.broken': ['起不来', 'does not start'],
+  'kernel.custom': ['其它解释器的路径,回车确认', 'Path to another interpreter, press Enter'],
+  'kernel.restartRunAll': ['重启并全部运行', 'Restart and run all'],
+  'kernel.clearAll': ['清除全部输出', 'Clear all outputs'],
+  'kernel.shutdown': ['关闭内核', 'Shut down kernel'],
+  'kernel.fellBack': ['「{wanted}」起不来,这次用的是 Forsion 自带的 Python。', '"{wanted}" could not start, so this run uses the Python bundled with Forsion.'],
+  'kernel.failed': ['Python 没能启动:{reason}', 'Python could not start: {reason}'],
+  'kernel.lost': ['和 Python 进程的连接断了。再点一次运行会重新启动它,之前的变量不在了。', 'The connection to the Python process was lost. Run again to start it; earlier variables are gone.'],
+  'kernel.restarted': ['内核已重启,之前的变量都清空了。', 'Kernel restarted. Earlier variables were cleared.'],
+
+  'cell.run': ['运行', 'Run'],
+  'cell.stop': ['中断', 'Interrupt'],
+  'cell.more': ['更多', 'More'],
+  'cell.queued': ['排队中', 'Queued'],
+  'cell.seconds': ['{n} 秒', '{n} s'],
+  'cell.minutes': ['{m} 分 {s} 秒', '{m} min {s} s'],
+  'cell.runNext': ['运行并跳到下一格', 'Run and move to next'],
+  'cell.runToHere': ['从头运行到这一格', 'Run from the top to here'],
+  'cell.clear': ['清除这一格的输出', 'Clear this output'],
+  'cell.up': ['上移', 'Move up'],
+  'cell.down': ['下移', 'Move down'],
+  'cell.toText': ['转成文字单元格', 'Convert to text cell'],
+  'cell.toCode': ['转成代码单元格', 'Convert to code cell'],
+  'cell.copyEmbed': ['复制嵌入到笔记的链接', 'Copy link for embedding in a note'],
+  'cell.copied': ['已复制,粘贴到任意一篇笔记里就是这一格的结果。', 'Copied. Paste it into any note to show this cell\'s output.'],
+  'cell.delete': ['删除单元格', 'Delete cell'],
+  'cell.addCode': ['代码', 'Code'],
+  'cell.addText': ['文字', 'Text'],
+  'cell.codeLines': ['代码 · {n} 行', 'Code · {n} lines'],
+  'cell.raw': ['原始单元格', 'Raw cell'],
+  'cell.textPlaceholder': ['写点文字…', 'Write some text…'],
+
+  'out.traceback': ['展开完整回溯({n} 行)', 'Show full traceback ({n} lines)'],
+  'out.tracebackHide': ['收起回溯', 'Hide traceback'],
+  'out.ask': ['问 Tangu', 'Ask Tangu'],
+  'out.copyError': ['复制报错', 'Copy error'],
+  'out.truncated': ['前面还有 {n} 个字符没显示(文件里是完整的)', '{n} earlier characters are not shown (the file has all of them)'],
+  'out.askQuote': ['{file} · 第 {n} 格\n\n代码:\n{code}\n\n报错:\n{error}', '{file} · cell {n}\n\nCode:\n{code}\n\nError:\n{error}'],
+
+  'load.bad': ['这个文件不是一份能读懂的 Jupyter 笔记本,为了不弄坏它,这里什么都不会改。', 'This file is not a Jupyter notebook that can be read. Nothing here will change it.'],
+  'load.old': ['这份笔记本是很早的格式(nbformat 3 或更早),这里打不开。在 Jupyter 里打开并保存一次就会升级。', 'This notebook uses a very old format (nbformat 3 or earlier) and cannot be opened here. Open and save it once in Jupyter to upgrade it.'],
+  'load.missing': ['读不到这个文件。', 'This file could not be read.'],
+  'save.failed': ['没能保存:{reason}', 'Could not save: {reason}'],
+
+  'vars.head': ['内核里的变量', 'Variables in the kernel'],
+  'vars.hint': ['每跑完一格刷新一次。点表格类的变量,在下面展开它的列;模块和函数不列出来。', 'Refreshed after each cell. Click a table variable to list its columns; modules and functions are not shown.'],
+  'vars.empty': ['还没有变量。跑一格代码之后,它定义的变量会列在这里。', 'No variables yet. Run a cell and what it defines is listed here.'],
+  'vars.none': ['打开一本笔记本后,内核里的变量会列在这里。', 'Open a notebook and the variables in its kernel are listed here.'],
+  'outline.empty': ['这本笔记本里还没有标题。在文字单元格里写「# 标题」就会出现在这里。', 'No headings in this notebook yet. Write "# Heading" in a text cell and it appears here.'],
+  'outline.none': ['打开一本笔记本后,它的标题会列在这里。', 'Open a notebook and its headings are listed here.'],
+  'chat.unavailable': ['这个版本的应用还不能把对话放进面板。', 'This version of the app cannot dock a conversation here.'],
+  'chat.none': ['打开一本笔记本后,可以在这里就它提问。', 'Open a notebook to ask about it here.'],
+  'chat.title': ['笔记本 {name}', 'Notebook {name}'],
+
+  'embed.cell': ['第 {n} 格', 'Cell {n}'],
+  'embed.cells': ['{n} 格', '{n} cells'],
+  'embed.noOutput': ['这一格还没有输出。打开笔记本运行一次。', 'This cell has no output yet. Open the notebook and run it.'],
+  'embed.noCell': ['笔记本里找不到这一格(可能已经删掉了)。', 'This cell is not in the notebook (it may have been deleted).'],
+  'embed.open': ['打开笔记本', 'Open notebook'],
+}
+
+export const locale = (): 'zh' | 'en' => ctx.getLocale?.() ?? 'zh'
+
+export function t(key: string, vars?: Record<string, string | number>): string {
+  const m = M[key]
+  let s = m ? m[locale() === 'en' ? 1 : 0] : key
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v))
+  return s
+}
