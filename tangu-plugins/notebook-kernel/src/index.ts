@@ -8,6 +8,7 @@ import type { TanguPlugin, PluginMeta, TanguPluginContext } from '@forsion/tangu
 import { isAbsolute, dirname, join, normalize } from 'node:path';
 import { Kernel } from './kernels.js';
 import { bundledPython, listEnvs, resolveEnv } from './envs.js';
+import { notebookTools } from './tools.js';
 
 const ID = 'notebook-kernel';
 const kernels = new Map<string, Kernel>();
@@ -40,16 +41,41 @@ const plugin: TanguPlugin = {
       try { await fn(req, res); } catch (e) { ctx.log(`route failed: ${(e as Error).stack ?? e}`); if (!res.headersSent) res.status(500).json({ detail: String((e as Error).message ?? e) }); }
     };
 
+    /** 页面最近一次说的「这本笔记本用哪个解释器」(只在内存里):Tangu 自己起内核时照这个来,没说过就用自带的。 */
+    const preferred = new Map<string, string>();
+    ctx.registerToolProvider({
+      id: ID,
+      tools: () => notebookTools({
+        async kernel(userId, nb) {
+          const k = get(userId, nb, true)!;
+          if (k.status().state === 'dead') {
+            const want = preferred.get(keyOf(userId, nb));
+            await k.open(want ? await resolveEnv(want, dirname(nb)) : null);
+          }
+          return k;
+        },
+      }),
+    });
+
     ctx.registerScopedRoutes((router) => {
       // 这本笔记本能用哪些 Python
       router.post('/envs', guard(async (req, res) => {
         const a = nbOf(req, res); if (!a) return;
         res.json({ envs: await listEnvs(dirname(a.nb)) });
       }));
+      // 页面打开一本笔记本时来问一次:有没有已经在跑的内核(Tangu 起的、或者上次没关的),有就接上;顺便报上它记着的解释器。
+      router.post('/status', guard((req, res) => {
+        const a = nbOf(req, res); if (!a) return;
+        const key = keyOf(a.userId, a.nb);
+        if (typeof req.body.python === 'string' && req.body.python) preferred.set(key, req.body.python); else preferred.delete(key);
+        const k = kernels.get(key);
+        res.json(k ? k.status() : { state: 'dead', python: null, current: null, queue: [], head: 0 });
+      }));
       // 起内核(或换解释器 / 重启)。python 省略 = 自带的。
       router.post('/open', guard(async (req, res) => {
         const a = nbOf(req, res); if (!a) return;
         const want = typeof req.body.python === 'string' && req.body.python ? req.body.python : '';
+        if (want) preferred.set(keyOf(a.userId, a.nb), want); else preferred.delete(keyOf(a.userId, a.nb));
         const env = want ? await resolveEnv(want, dirname(a.nb)) : null;
         const k = get(a.userId, a.nb, true)!;
         const st = await k.open(env, { restart: !!req.body.restart });

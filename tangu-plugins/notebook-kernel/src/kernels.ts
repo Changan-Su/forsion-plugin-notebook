@@ -53,6 +53,9 @@ export class Kernel {
   private starting: Promise<void> | null = null;
   private generation = 0;
   lastTouch = Date.now();
+  private lastPagePoll = 0;
+  /** A notebook page is following this kernel (it long-polls every 10 s): it will write the outputs to the file. */
+  attached(): boolean { return Date.now() - this.lastPagePoll < 20_000; }
 
   constructor(
     readonly nb: string,
@@ -261,8 +264,9 @@ export class Kernel {
   }
 
   /** Events after `since`. Waits up to `waitMs` when there are none yet. `gap` = the cursor fell off the log. */
-  async poll(since: number, waitMs: number): Promise<{ events: KernelEvent[]; gap: boolean } & KernelStatus> {
+  async poll(since: number, waitMs: number, page = true): Promise<{ events: KernelEvent[]; gap: boolean } & KernelStatus> {
     this.lastTouch = Date.now();
+    if (page) this.lastPagePoll = Date.now();
     if (since > this.seq) since = 0; // the engine restarted under an old cursor
     if (this.seq <= since && waitMs > 0) {
       await new Promise<void>((resolve) => {

@@ -5,11 +5,10 @@
   "description": "Jupyter 笔记本:在 Forsion 里打开、编辑、运行 .ipynb(构建源;产物 main.js 与 tangu-plugins/notebook-kernel/dist 已提交)",
   "type": "module",
   "scripts": {
-    "build": "node build.mjs && npm run build:engine",
-    "build:engine": "tsc -p tangu-plugins/notebook-kernel",
+    "build": "node build.mjs",
     "vendor": "node scripts/vendor.mjs",
     "check": "node check.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tangu-plugins/notebook-kernel",
     "verify": "npm run typecheck && npm run build && npm run check"
   },
   "dependencies": {

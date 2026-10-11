@@ -113,6 +113,7 @@ export class NotebookView {
   private since = 0
   private polling = false
   private hostTries = 0
+  private asked = false
   private opening: Promise<boolean> | null = null
   private dead = false
   // 保存:整本一起写。saving / again 保证同一时刻只有一次写在路上;lastWritten 用来认出「文件变了」其实是自己刚写的。
@@ -176,6 +177,7 @@ export class NotebookView {
     }
     for (const u of this.cells.values()) u.dispose()
     this.cells.clear()
+    this.asked = false
     this.paint()
     this.changed()
   }
@@ -242,6 +244,7 @@ export class NotebookView {
       this.bar.innerHTML = `${seg}${maybe ? '' : `<span class="nb-note" title="${esc(t('bar.noRun'))}">${esc(t('bar.noRun'))}</span>`}${panel}`
       return
     }
+    if (!this.asked) { this.asked = true; void this.attach() }
     const k = this.kernelLabel()
     this.bar.innerHTML = `${seg}${this.busy
       ? `<button class="nb-btn stop" data-a="interrupt">${icon('stop')}${esc(t('bar.interrupt'))}</button>`
@@ -477,6 +480,20 @@ export class NotebookView {
     return this.opening = this.openKernel(restart).finally(() => { this.opening = null })
   }
 
+  /** 打开(或从盘上重新读入)时问一次引擎:这本有没有已经在跑的内核 —— Tangu 起的、或者上次没关掉的。有就接上;
+   *  顺便报上这本记着的解释器,Tangu 自己起内核时照这个来。 */
+  private async attach(): Promise<void> {
+    const nb = this.abs
+    if (!nb || this.opening || (this.kernel && this.kernel.state !== 'dead')) return
+    try {
+      const s = await post<KernelStatus>('/status', { nb, python: prefs.python[this.path] })
+      if (this.dead || this.opening || (this.kernel && this.kernel.state !== 'dead') || s.state === 'dead') return
+      this.since = s.head
+      this.applyStatus(s)
+      void this.poll()
+    } catch { /* 引擎还没起来:不要紧,运行的时候再起 */ }
+  }
+
   private async openKernel(restart: boolean): Promise<boolean> {
     const nb = this.abs
     if (!nb) return false
@@ -696,7 +713,7 @@ export class NotebookView {
         if (path) prefs.python[this.path] = path; else delete prefs.python[this.path]
         void ctx.saveData?.(prefs)
         // 内核开着就换过去(变量会清空,和 Jupyter 换内核一样);没开就只记下,下次运行时用。
-        if (alive) void this.restart(); else this.paintBar()
+        if (alive) void this.restart(); else { this.asked = false; this.paintBar() }
       }
       const using = this.kernel?.python?.path ?? prefs.python[this.path] ?? null
       void post<{ envs: EnvInfo[] }>('/envs', { nb: this.abs }).then(({ envs }) => {

@@ -19,8 +19,8 @@
 .nb .nb-btn svg { width: 13px; height: 13px; }
 .nb .nb-btn.stop { color: var(--danger); }
 .nb .nb-ibtn { width: 26px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm, 6px); color: var(--text-muted); }
-.nb .nb-btn:hover, .nb .nb-ibtn:hover, .nb .nb-cbar button:hover { background: var(--overlay-light); color: var(--text); }
-.nb .nb-btn.stop:hover, .nb .nb-cbar button.stop:hover { color: var(--danger); }
+.nb .nb-btn:hover, .nb .nb-ibtn:hover, .nb .nb-cbar > button:hover, .nb .nb-cbar > .nb-anchor > button:hover { background: var(--overlay-light); color: var(--text); }
+.nb .nb-btn.stop:hover, .nb .nb-cbar > button.stop:hover { color: var(--danger); }
 .nb-anchor { position: relative; display: inline-flex; }
 .nb .nb-kernel { margin-left: 6px; display: inline-flex; align-items: center; gap: 6px; height: 24px; max-width: 260px; padding: 0 8px 0 9px; border-radius: var(--radius-pill, 999px); border: 1px solid var(--border); font-size: var(--ui-font-meta, 12px); color: var(--text-muted); background: var(--bg-card); }
 .nb .nb-kernel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -62,10 +62,11 @@
 .nb-mdcell > .nb-cbar { top: 1px; right: -34px; padding-left: 10px; }
 .nb-cbar.open { z-index: 60; }
 .nb-cbar .t { margin-right: 6px; font-size: var(--ui-font-caption, 11px); color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nb .nb-cbar button { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm, 6px); color: var(--text-muted); }
-.nb .nb-cbar button.on { background: var(--overlay-light); color: var(--text); }
-.nb .nb-cbar button.stop { color: var(--danger); }
-.nb-cbar svg { width: 13px; height: 13px; }
+/* 只认按钮条自己的那几颗(直接子元素):菜单也挂在这个条里,写成 .nb-cbar button 会把菜单项也压成 24px 的方块。 */
+.nb .nb-cbar > button, .nb .nb-cbar > .nb-anchor > button { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm, 6px); color: var(--text-muted); }
+.nb .nb-cbar > .nb-anchor > button.on { background: var(--overlay-light); color: var(--text); }
+.nb .nb-cbar > button.stop { color: var(--danger); }
+.nb-cbar > button > svg, .nb-cbar > .nb-anchor > button > svg { width: 13px; height: 13px; }
 .nb-out { margin-top: 10px; }
 .nb-out:empty { display: none; }
 .nb-out > * + * { margin-top: 8px; }

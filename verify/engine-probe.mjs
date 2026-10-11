@@ -13,7 +13,8 @@ if (!existsSync(process.env.TANGU_PYTHON_BIN)) throw new Error(`找不到自带 
 const plugin = (await import(join(kdir, 'dist', 'index.js'))).default
 const routes = {}
 const router = Object.fromEntries(['get', 'post', 'put', 'patch', 'delete'].map((m) => [m, (p, h) => { routes[p] = h }]))
-plugin.activate({ registerScopedRoutes: (mount) => mount(router), registerPlugin() {}, registerToolProvider() {}, registerCommand() {}, log: (m) => process.env.VERBOSE && console.log('  [log]', m), paths: { pluginDir: kdir, dataDir: tmpdir() }, sdk: {}, activity: { append() {} } })
+let provider
+plugin.activate({ registerScopedRoutes: (mount) => mount(router), registerPlugin() {}, registerToolProvider(p) { provider = p }, registerCommand() {}, log: (m) => process.env.VERBOSE && console.log('  [log]', m), paths: { pluginDir: kdir, dataDir: tmpdir() }, sdk: {}, activity: { append() {} } })
 const call = (path, body) => new Promise((resolve) => { const res = { code: 200, headersSent: false, status(c) { this.code = c; return this }, json(o) { this.headersSent = true; resolve({ code: this.code, ...o }) } }; routes[path]({ body, user: { userId: 'u1' }, headers: {} }, res) })
 const dir = mkdtempSync(join(tmpdir(), 'nb-engine-')); const nb = join(dir, 'a.ipynb'); writeFileSync(nb, '{}')
 let bad = 0; const ok = (label, cond, extra = '') => { console.log(`${cond ? '✓' : '✗'} ${label}${cond ? '' : `  ${typeof extra === 'string' ? extra : JSON.stringify(extra).slice(0, 500)}`}`); if (!cond) bad++ }
@@ -78,5 +79,52 @@ r = await call('/shutdown', { nb }); ok('关闭', r.state === 'dead')
 await new Promise((res) => setTimeout(res, 3000))
 ok('关闭后 3 秒:吞中断的死循环也没留下进程', !alive(), alive())
 r = await call('/events', { nb, since: 0, wait: 0 }); ok('关闭后查事件不报错', r.state === 'dead' && r.code === 200, r)
+
+// ── Tangu 的三件工具(直接调 execute,不经模型) ──
+const { readFileSync } = await import('node:fs')
+const tools = Object.fromEntries(provider.tools().map((d) => [d.name, d]))
+const tctx = { userId: 'u1', sessionId: 's', appId: 'a', cwd: dir }
+const nb2 = join(dir, 'b.ipynb')
+const J = (cells, minor = 5) => JSON.stringify({ cells, metadata: { keep: { me: 1 } }, nbformat: 4, nbformat_minor: minor }, null, 1) + '\n'
+writeFileSync(nb2, J([{ cell_type: 'markdown', id: 'intro', metadata: {}, source: ['# 标题'] }, { cell_type: 'code', execution_count: null, id: 'c1', metadata: { tags: ['t'] }, outputs: [], source: ['y = 20\n', 'y + 1'] }]))
+ok('三件工具都在,改和跑走「跑命令」那档审批,读不用', ['notebook_read', 'notebook_edit', 'notebook_run'].every((n) => tools[n]) && tools.notebook_edit.capabilities.approval === 'command' && tools.notebook_run.capabilities.approval === 'command' && !tools.notebook_read.capabilities.approval, Object.keys(tools))
+ok('工具说明是英文', provider.tools().every((d) => !/[\u4e00-\u9fff]/.test(JSON.stringify(d.definition) + (d.deferHint ?? ''))))
+let out = await tools.notebook_read.execute({ path: 'b.ipynb' }, tctx)
+ok('读:按相对路径,列出每格的位置 / id / 类型 / 源码', /2 cells/.test(out) && /\[1\] markdown id=intro\n# 标题/.test(out) && /\[2\] code id=c1\ny = 20\ny \+ 1/.test(out), out)
+out = await tools.notebook_read.execute({ path: '../etc/passwd' }, tctx)
+ok('不是 .ipynb 的路径被拒', /^Error:/.test(out), out)
+out = await tools.notebook_run.execute({ path: nb2, cell: 'c1' }, tctx)
+ok('跑一格:返回输出,并说明用的哪个 Python', /--- output ---\n21/.test(out) && /bundled with Forsion/.test(out), out)
+let disk = JSON.parse(readFileSync(nb2, 'utf8'))
+ok('没有页面跟着时由工具落盘:输出、序号写进文件,别的原样', disk.cells[1].execution_count === 1 && disk.cells[1].outputs[0]?.data?.['text/plain']?.[0] === '21' && disk.metadata.keep.me === 1 && disk.cells[1].metadata.tags[0] === 't', disk.cells[1])
+out = await tools.notebook_edit.execute({ path: nb2, action: 'insert', cell: 'c1', source: 'print(y * 2)\nboom' }, tctx)
+const newId = /id=(\w+)/.exec(out)?.[1]
+ok('插入一格:落在指定那格后面', /Cell 3 id=/.test(out) && JSON.parse(readFileSync(nb2, 'utf8')).cells[2].source.join('') === 'print(y * 2)\nboom', out)
+out = await tools.notebook_run.execute({ path: nb2, cell: newId }, tctx)
+ok('和上一格共用同一个内核(y 还在),报错原样带回', /40/.test(out) && /NameError/.test(out), out)
+out = await tools.notebook_edit.execute({ path: nb2, action: 'replace', cell: '3', source: 'print(y * 3)' }, tctx)
+disk = JSON.parse(readFileSync(nb2, 'utf8'))
+ok('替换:源码换掉、旧输出清掉,前一格的输出还在', disk.cells[2].source.join('') === 'print(y * 3)' && disk.cells[2].outputs.length === 0 && disk.cells[1].outputs.length === 1, disk.cells[2])
+out = await tools.notebook_run.execute({ path: nb2, cell: 'all' }, tctx)
+ok('全部运行', /21/.test(out) && /60/.test(out), out)
+out = await tools.notebook_edit.execute({ path: nb2, action: 'delete', cell: 'intro' }, tctx)
+ok('删除', /2 cells/.test(out) && JSON.parse(readFileSync(nb2, 'utf8')).cells[0].id === 'c1', out)
+out = await tools.notebook_edit.execute({ path: nb2, action: 'replace', cell: 'nope', source: 'x' }, tctx)
+ok('找不到的格子:报错,不写文件', /^Error: no cell/.test(out), out)
+// 页面跟着内核时(它在轮询),工具不落盘 —— 由页面写
+await call('/events', { nb: nb2, since: 0, wait: 0 })
+const before = readFileSync(nb2, 'utf8')
+out = await tools.notebook_run.execute({ path: nb2, cell: 'c1' }, tctx)
+ok('页面跟着这个内核时:工具照样返回输出,但不去写文件(留给页面)', /21/.test(out) && readFileSync(nb2, 'utf8') === before, out)
+r = await call('/status', { nb: nb2, python: '' })
+ok('/status:页面打开时能看到 Tangu 起的内核', r.state === 'idle' && r.python?.kind === 'bundled', r)
+// 等不到结果:先返回,内核接着跑,跑完再落盘
+await new Promise((res) => setTimeout(res, 21_000)) // 等「页面跟着」的窗过去
+writeFileSync(nb2, J([{ cell_type: 'code', execution_count: null, id: 'slow', metadata: {}, outputs: [], source: ['import time; time.sleep(3); print("late")'] }]))
+out = await tools.notebook_run.execute({ path: nb2, cell: 'slow', timeout_seconds: 1 }, tctx)
+ok('超过等待时间:先返回「还在跑」', /^Still running/.test(out), out)
+await new Promise((res) => setTimeout(res, 4000))
+ok('跑完之后输出照样写进了文件', JSON.parse(readFileSync(nb2, 'utf8')).cells[0].outputs[0]?.text?.join('') === 'late\n', readFileSync(nb2, 'utf8').slice(0, 400))
+await call('/shutdown', { nb: nb2 })
 await plugin.deactivate(); rmSync(dir, { recursive: true, force: true })
 setTimeout(() => process.exit(bad ? 1 : 0), 300)

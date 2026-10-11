@@ -3,7 +3,7 @@
 import { build } from 'esbuild'
 import { readFileSync, existsSync } from 'node:fs'
 import assert from 'node:assert/strict'
-import { options } from './build.mjs'
+import { options, engineOptions } from './build.mjs'
 
 const mod = async (entry) => {
   const out = await build({ entryPoints: [entry], bundle: true, format: 'esm', write: false, platform: 'node', logLevel: 'silent' })
@@ -87,6 +87,8 @@ ok('大纲:只认文字格里的标题,代码围栏里的 # 不算', () => {
 if (existsSync('src/index.ts')) {
   const built = await build({ ...options, write: false, logLevel: 'silent' })
   ok('main.js 和 src 是同步的(改了 src 要重跑 npm run build)', () => assert.equal(readFileSync('main.js', 'utf8'), built.outputFiles[0].text))
+  const engBuilt = await build({ ...engineOptions, write: false, logLevel: 'silent' })
+  ok('引擎插件的 dist/index.js 和源码是同步的', () => assert.equal(readFileSync(engineOptions.outfile, 'utf8'), engBuilt.outputFiles[0].text))
   ok('main.js 顶层没有 import / export(宿主按函数体装载)', () => assert.ok(!/^\s*(import|export)\s/m.test(readFileSync('main.js', 'utf8'))))
   const { M } = await mod('src/i18n.ts')
   ok('文案:每条都有中英两份,英文里没有汉字,{占位符} 两边一致', () => {

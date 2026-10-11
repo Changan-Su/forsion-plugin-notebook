@@ -25,8 +25,23 @@ export const options = {
   logLevel: 'info',
 }
 
+// 引擎那一半:打成一个 ESM 文件(Node 里跑)。它用的 .ipynb 读写代码就是 src/nb.ts 这一份。
+export const engineOptions = {
+  entryPoints: ['tangu-plugins/notebook-kernel/src/index.ts'],
+  outfile: 'tangu-plugins/notebook-kernel/dist/index.js',
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node20',
+  minify: false,
+  sourcemap: false,
+  legalComments: 'none',
+  logLevel: 'info',
+}
+
 // 直接运行才落盘;check.mjs 只借这份配置在内存里重打一遍,核对 main.js 和 src 是不是同步。
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const out = await build(options)
   console.log(`built main.js (${(out.metafile.outputs['main.js'].bytes / 1024).toFixed(0)} KB)`)
+  await build(engineOptions)
 }
