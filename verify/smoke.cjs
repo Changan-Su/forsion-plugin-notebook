@@ -3,6 +3,9 @@
 // 阅读模式 → 笔记里按格嵌入 → 关掉标签后 Python 进程退出。不碰开发实例、不用模型额度。
 // 跑(仓根):node .claude/hooks/devlock.cjs run --vehicle=e2e --what="Jupyter 插件冒烟" --eta=5 -- node Forsion-Instrumentality-Project/forsion-plugin-notebook/verify/smoke.cjs
 // UI_ZOOM=1.1 在界面缩放 110% 下跑同一遍(菜单位置这类问题只在这里看得见)。先 npm run build。
+// GENESIS_DESKTOP=<别的检出>/desktop 换一份宿主来测(缺省是主检出;那份检出要先自己 electron-vite build,并且有自带 Python)。
+// EXPECT_MODES=option|fallback 把「文字格那排模式按钮是怎么没的」钉成断言:option = 宿主认 modes:false、根本不画;
+// fallback = 旧宿主画了、由 style.css 藏掉。不设就只报一行、不判。改了挂编辑器那段,新旧两种宿主各跑一遍。
 const fs = require('fs'); const os = require('os'); const path = require('path'); const { execSync } = require('child_process')
 const ROOT = path.resolve(__dirname, '..')
 const DESK = process.env.GENESIS_DESKTOP || path.resolve(ROOT, '../../Forsion-Genesis/desktop')
