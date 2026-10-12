@@ -83,6 +83,10 @@ async function main() {
     ok('打开:四格按顺序画出来,文字格是文字、代码格是代码', cells.length === 4 && cells[0][1] === 'markdown' && /试验记录/.test(cells[0][2]) && /x = 6 \* 7/.test(cells[1][2]), cells)
     const geo = await win.evaluate(() => { const r = (e) => e.getBoundingClientRect(); const bar = r(document.querySelector('.nb-bar')); const tab = r(document.querySelector('.dv-tab.dv-active-tab, .dv-tab')); const host = r(document.querySelector('.nb-host')); return { barTop: bar.top, tabBottom: tab.bottom, hostTop: host.top, hostH: host.height } })
     ok('页面在标签栏下面,不盖住它', geo.barTop >= geo.tabBottom - 2 && Math.abs(geo.barTop - geo.hostTop) < 1 && geo.hostH > 400, geo)
+    // 那一排有两条路去掉:认 modes:false 的宿主根本不画(DOM 里 0 个按钮);旧宿主画了,由 style.css 藏掉。这里报走的是哪条。
+    const modeButtons = await win.evaluate(() => document.querySelectorAll('.nb-md button[aria-pressed]').length)
+    console.log(`  · 模式切换排:${modeButtons === 0 ? '宿主没画(走的是 modes:false 选项)' : `宿主画了 ${modeButtons} 个按钮,样式藏掉(旧宿主的兜底)`}`)
+    if (process.env.EXPECT_MODES) ok(`这个宿主应当${process.env.EXPECT_MODES === 'option' ? '认 modes 选项(不画那一排)' : '不认 modes 选项(靠样式藏)'}`, (modeButtons === 0) === (process.env.EXPECT_MODES === 'option'), modeButtons)
     ok('文字格里只有文字,没有宿主编辑器自带的那排切换按钮', await win.evaluate(() => [...document.querySelectorAll('.nb-md button[aria-pressed]')].every((b) => b.getBoundingClientRect().height === 0) && !/Markdown 源码/.test(document.querySelector('.nb-md').innerText)))
     await shot('0-open')
     ok('打开不改文件(没人动过就不写盘)', fs.readFileSync(nbFile, 'utf8') === NB_TEXT)

@@ -335,7 +335,7 @@ export class NotebookView {
         const mark = (): void => { u.touched = true }
         for (const ev of ['keydown', 'pointerdown', 'paste', 'drop', 'cut']) body.addEventListener(ev, mark, true)
         u.md = mount(body, {
-          value: source(cell), readOnly: this.read, label: t('cell.textPlaceholder'),
+          value: source(cell), readOnly: this.read, label: t('cell.textPlaceholder'), modes: false, // 不要「编辑 / 源码 / 预览」那一排;不认这个选项的旧宿主由 style.css 里那条样式藏掉
           onChange: (md) => { if (!u.touched || this.read || md === source(cell)) return; setSource(cell, md); this.touch(); this.changed() },
         })
         u.focus = () => u.md!.focus()

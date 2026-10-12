@@ -37,8 +37,9 @@
 .nb-cell { position: relative; }
 .nb-md { font-family: var(--font-body); font-size: 15px; line-height: 27px; min-height: 27px; }
 /* 宿主的 Markdown 编辑器是给「写稿」做的,顶上带一排「编辑 / 源码 / 预览」切换;放进单元格里只要编辑器本身。
-   ponytail: 认的是「一排带 aria-pressed 的按钮」这个形状(只藏它,不按位置藏,宿主以后去掉这排也不会误伤编辑器);
-   宿主给出不带这排的选项后换成那个选项。 */
+   新宿主走选项,旧宿主走这条样式:view.ts 挂编辑器时传了 modes: false,认它的宿主根本不画这一排,这条就什么也选不中;
+   2.13.2 及更早的宿主不认那个选项,靠这条藏。认的是「一排带 aria-pressed 的按钮」这个形状,不按位置藏,不会误伤编辑器。
+   最低支持的宿主版本抬到认 modes 的那一版之后,这条可以删。 */
 .nb-md .amx-publishing-editor > div:has(> button[aria-pressed]) { display: none !important; } /* 那一排是行内样式写的 display:flex,不加 !important 盖不住 */
 .nb-plain { display: block; width: 100%; box-sizing: border-box; min-height: 56px; resize: vertical; margin: 6px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text); font: 13px/1.7 var(--font-mono); }
 .nb-cc { margin: 14px 0; }

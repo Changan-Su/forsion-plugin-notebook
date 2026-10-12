@@ -39,7 +39,7 @@ declare const ctx: {
     mountChat?(el: HTMLElement, o?: { agent?: string; folder?: string; title?: string }): HostChatMount
   }
   ui?: {
-    mountMarkdownEditor?(el: HTMLElement, opts: { value: string; label?: string; readOnly?: boolean; onChange?(markdown: string): void }): HostMarkdownEditor
+    mountMarkdownEditor?(el: HTMLElement, opts: { value: string; label?: string; readOnly?: boolean; modes?: boolean; onChange?(markdown: string): void }): HostMarkdownEditor
   }
 }
 
