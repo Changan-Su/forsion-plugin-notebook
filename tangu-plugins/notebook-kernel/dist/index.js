@@ -703,7 +703,7 @@ function notebookTools(host) {
       name: "notebook_read",
       definition: { type: "function", function: {
         name: "notebook_read",
-        description: "Read a Jupyter notebook (.ipynb) as text: every cell with its position, id, type, source and the text of its saved outputs (images and rich outputs are listed by type). Pass `cell` to read just one cell. Use this instead of reading the .ipynb file as raw JSON.",
+        description: "Read a Jupyter notebook (.ipynb) as text: every cell with its position, id, type, source and the text of its saved outputs (images and rich outputs are listed by type). Pass `cell` to read just one cell. Use this instead of reading the .ipynb file as raw JSON. The text returned is not the file's raw text (on disk a notebook is JSON), so edit_file, write_file and apply_patch do not work on it: change cells with notebook_edit and execute them with notebook_run.",
         parameters: { type: "object", properties: {
           path: { type: "string", description: "Path to the .ipynb file, absolute or relative to the working directory." },
           cell: { type: "string", description: "Optional. A cell id, or its 1-based position, to read only that cell." }
@@ -718,7 +718,7 @@ function notebookTools(host) {
             const i = find(nb, args.cell);
             return i < 0 ? `Error: no cell "${args.cell}" (the notebook has ${nb.cells.length} cells)` : cellText(nb.cells[i], i);
           }
-          return `${p} \u2014 ${nb.cells.length} cells
+          return `${p} \u2014 ${nb.cells.length} cells (to change a cell use notebook_edit, to run use notebook_run; the file on disk is JSON, do not edit it with edit_file / write_file)
 
 ${nb.cells.map(cellText).join("\n\n")}`;
         } catch (e) {
@@ -731,7 +731,7 @@ ${nb.cells.map(cellText).join("\n\n")}`;
       name: "notebook_edit",
       definition: { type: "function", function: {
         name: "notebook_edit",
-        description: "Edit a Jupyter notebook (.ipynb) cell by cell. `replace` sets a cell's source (its saved outputs are cleared), `insert` adds a new cell after the given cell (or at the top when `cell` is omitted), `delete` removes a cell. Everything else in the file is left as it is. The open notebook page reloads by itself. This does not run anything: call notebook_run afterwards to execute.",
+        description: "Change a Jupyter notebook (.ipynb), one cell at a time. This is the tool for editing notebooks: never use edit_file, write_file or apply_patch on an .ipynb. `replace` sets a cell's source (its saved outputs are cleared), `insert` adds a new cell after the given cell (or at the top when `cell` is omitted), `delete` removes a cell. Everything else in the file is left as it is. The open notebook page reloads by itself. This does not run anything: call notebook_run afterwards to execute.",
         parameters: { type: "object", properties: {
           path: { type: "string", description: "Path to the .ipynb file, absolute or relative to the working directory." },
           action: { type: "string", enum: ["replace", "insert", "delete"] },
