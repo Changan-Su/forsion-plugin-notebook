@@ -4,6 +4,12 @@
 
 English: open, edit and run Jupyter notebooks inside Forsion. Files stay standard nbformat 4.
 
+## 安装
+
+Forsion 桌面端 → 商店 → 搜「Jupyter」→ 安装。需要 Forsion 桌面 2.13.0 或更新。当前版本 0.1.0。
+
+Install from the Store inside Forsion Desktop (search for "Jupyter"). Requires Forsion Desktop 2.13.0 or later.
+
 ## 能做什么
 
 - 文件树里 `.ipynb` 有自己的图标,点开就是笔记本页面;右键「新建 Jupyter 笔记本」(新建出来只有一个空的代码格)。
@@ -68,7 +74,7 @@ Tangu 跑的和页面上跑的是同一个内核,变量互通。输出由谁写�
 - 交互式控件(ipywidgets)不支持;带脚本的 HTML 输出(plotly / bokeh 的交互图)被清洗掉,有静态图就显示静态图。
 - `input()` 会报错而不是等输入;没有代码补全;没有 Jupyter 的命令模式快捷键。
 - 文字格里 `attachment:` 引用的图片不显示(文件里原样保留)。
-- 文字格用的是应用给插件的 Markdown 编辑器,它顶上那排「编辑 / 源码 / 预览」是用样式藏掉的(`style.css` 里有说明),等应用给出不带这排的选项再换。
+- 文字格用的是应用给插件的 Markdown 编辑器。桌面 2.13.3 起,插件让应用不画它顶上那排「编辑 / 源码 / 预览」;2.13.0 到 2.13.2 上那一排是用样式藏掉的(`style.css` 里有说明)。
 - 手上有没存的改动(停手不到 0.8 秒)时文件恰好被别处改了,以手上的为准。
 - Windows 上没有实测过(中断只走进程内那一条路;关内核时用 `taskkill /T` 收子进程)。网页版 / 手机上「只能看和改」那条路也没有实测过。
 - Tangu 的三件工具用真模型跑过(2026-10-12,GPT 6 Luna,Genesis 真模型台架的 `--only notebook`):「第三格报错了,改好重跑」「最后加一格再跑」这两句不点名工具的话,模型会用这三件工具,改和跑各弹一张审批,文件守得住。只测了这一个模型、这一种小任务;页面开着的时候 Tangu 来跑(输出由页面落盘)那条路,真模型没走过。
