@@ -6,6 +6,8 @@
 // GENESIS_DESKTOP=<别的检出>/desktop 换一份宿主来测(缺省是主检出;那份检出要先自己 electron-vite build,并且有自带 Python)。
 // EXPECT_MODES=option|fallback 把「文字格那排模式按钮是怎么没的」钉成断言:option = 宿主认 modes:false、根本不画;
 // fallback = 旧宿主画了、由 style.css 藏掉。不设就只报一行、不判。改了挂编辑器那段,新旧两种宿主各跑一遍。
+// PLUGIN_DIR=<目录名> 把插件装进隔离 home 里另一个名字的目录(缺省 notebook,和插件 id 一样)。商店的安装目录名是从显示名
+// 推出来的,可以和插件 id 不同;2.13.3 及更早的宿主上,目录名和 id 不一样时页面调不到引擎那一半(起不了内核),这一项在那些宿主上是红的。
 const fs = require('fs'); const os = require('os'); const path = require('path'); const { execSync } = require('child_process')
 const ROOT = path.resolve(__dirname, '..')
 const DESK = process.env.GENESIS_DESKTOP || path.resolve(ROOT, '../../Forsion-Genesis/desktop')
@@ -43,7 +45,7 @@ async function main() {
   fs.writeFileSync(path.join(dir, '恶意.ipynb'), JSON.stringify(EVIL, null, 1) + '\n')
   fs.writeFileSync(path.join(vault, `${NOTE}.md`), `## 结果\n\n图直接从笔记本里引过来:\n\n![[分析/${NB}#plot]]\n\n就这些。\n`)
   // 插件原样拷进隔离 home 的 plugins/(引擎不认符号链接;带 fileExtensions 的插件也不能走开发加载)
-  const dest = path.join(home, 'plugins', 'notebook'); fs.mkdirSync(dest, { recursive: true })
+  const dest = path.join(home, 'plugins', process.env.PLUGIN_DIR || 'notebook'); fs.mkdirSync(dest, { recursive: true })
   for (const f of ['manifest.json', 'main.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dest, f))
   fs.cpSync(path.join(ROOT, 'tangu-plugins'), path.join(dest, 'tangu-plugins'), { recursive: true, filter: (s) => !/\/(src|types|node_modules|__pycache__)(\/|$)|tsconfig\.json$/.test(s) })
   fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({}))
