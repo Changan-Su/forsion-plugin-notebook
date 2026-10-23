@@ -2,7 +2,7 @@
 // node verify/windows-conda.mjs <fixture-profile> <base-prefix> <child-prefix>
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,11 +10,14 @@ import { fileURLToPath } from 'node:url'
 assert.equal(process.platform, 'win32')
 const [profile, base, child] = process.argv.slice(2).map(p => resolve(p))
 assert.ok(profile && base && child, 'Pass an isolated profile and two real conda prefixes')
-assert.notEqual(profile.toLowerCase(), homedir().toLowerCase(), 'Use a fixture profile')
+assert.notEqual(realpathSync(profile).toLowerCase(), realpathSync(homedir()).toLowerCase(), 'Use a fixture profile')
+assert.notEqual(realpathSync(base).toLowerCase(), realpathSync(child).toLowerCase(), 'Base and child must be distinct environments')
 process.env.USERPROFILE = profile // Only this test process and its children; no shell/system changes.
 process.env.APPDATA = join(profile, 'AppData', 'Roaming')
 process.env.LOCALAPPDATA = join(profile, 'AppData', 'Local')
 process.env.PYTHONUSERBASE = join(profile, 'python-user')
+process.env.IPYTHONDIR = join(profile, 'ipython')
+delete process.env.IPYTHON_DIR
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 async function moduleAt(file) {
   const output = await build({ entryPoints: [join(root, file)], bundle: true, platform: 'node', format: 'esm', write: false })

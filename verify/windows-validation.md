@@ -25,7 +25,9 @@ $env:FORSION_TEST_DESKTOP = 'left'
 node verify/smoke.cjs
 ```
 
-补验 conda：在独立临时 profile 安装真实 Miniforge 26.9.4-0，再用实际 conda 克隆创建子环境；base 和子环境的发现、内核选择和实际执行共 **6/6** 通过，均未退回内置 Python。安装采用 `/NoRegistry=1 /NoShortcuts=1 /RegisterPython=0 /AddToPath=0`，不初始化用户 shell；检查进程的 USERPROFILE、APPDATA 和 Python user base 均隔离。不是伪造 conda 清单或返回值。
+补验 conda：在独立临时 profile 安装真实 Miniforge 26.9.4-0，再用实际 conda 克隆创建子环境；两者均为 Python 3.14.9。base 和子环境的发现、内核选择和实际执行共 **6/6** 通过，均未退回内置 Python。安装采用 `/NoRegistry=1 /NoShortcuts=1 /RegisterPython=0 /AddToPath=0`，不初始化用户 shell；检查进程的 USERPROFILE、APPDATA、Python user base 和 IPython profile 均隔离。不是伪造 conda 清单或返回值。聚焦评审要求补的 IPYTHONDIR 隔离和重复前缀拒绝已加入；最终 6 项复跑通过，相同前缀负对照在启动内核前拒绝。
+
+另用真实 Jupyter `nbformat 5.11.1` 做三项互操作检查：Jupyter 库写出的 CRLF 笔记本经插件 parse/serialize 原样不变；插件编辑源码和输出后该库可重新打开并通过 schema 校验；35 项 Electron 冒烟实际写盘的笔记本也能被该库打开，输出存在、schema 有效。这是 Jupyter 文件库检查，没有声称额外运行 Jupyter 或 VS Code 的 GUI。
 
 复跑须先准备这两个真实环境（base 位于 fixture profile 的 `miniforge3`，或由该 profile 的 `.conda/environments.txt` 注册）：
 
