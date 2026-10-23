@@ -25,4 +25,14 @@ $env:FORSION_TEST_DESKTOP = 'left'
 node verify/smoke.cjs
 ```
 
-未额外搭建 conda，未声称实测 conda 安装；实际 venv 已建立、枚举并运行。未发布商店版本，本轮修复由源码主分支提供。
+补验 conda：在独立临时 profile 安装真实 Miniforge 26.9.4-0，再用实际 conda 克隆创建子环境；两者均为 Python 3.14.9。base 和子环境的发现、内核选择和实际执行共 **6/6** 通过，均未退回内置 Python。安装采用 `/NoRegistry=1 /NoShortcuts=1 /RegisterPython=0 /AddToPath=0`，不初始化用户 shell；检查进程的 USERPROFILE、APPDATA、Python user base 和 IPython profile 均隔离。不是伪造 conda 清单或返回值。聚焦评审要求补的 IPYTHONDIR 隔离和重复前缀拒绝已加入；最终 6 项复跑通过，相同前缀负对照在启动内核前拒绝。
+
+另用真实 Jupyter `nbformat 5.11.1` 做三项互操作检查：Jupyter 库写出的 CRLF 笔记本经插件 parse/serialize 原样不变；插件编辑源码和输出后该库可重新打开并通过 schema 校验；35 项 Electron 冒烟实际写盘的笔记本也能被该库打开，输出存在、schema 有效。这是 Jupyter 文件库检查，没有声称额外运行 Jupyter 或 VS Code 的 GUI。
+
+复跑须先准备这两个真实环境（base 位于 fixture profile 的 `miniforge3`，或由该 profile 的 `.conda/environments.txt` 注册）：
+
+```powershell
+node verify/windows-conda.mjs 'C:\fixture-profile' 'C:\fixture-profile\miniforge3' 'C:\fixture-profile\miniforge3\envs\acceptance'
+```
+
+官方安装选项见 [constructor 文档](https://conda.github.io/constructor/cli-options/)，实际使用的安装器来自 [Miniforge 26.9.4-0](https://github.com/conda-forge/miniforge/releases/tag/26.9.4-0)，SHA256 `43638698f5ee811debae27b0dc3ab5c0300129bd400a847376c4bd2f6be15ceb`，与发布方校验文件一致。实际 venv 亦已建立、枚举并运行。未发布商店版本，本轮修复由源码主分支提供。
