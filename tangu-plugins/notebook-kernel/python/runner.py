@@ -27,11 +27,14 @@ import threading
 import time
 import types
 import warnings
+if sys.platform == 'win32':
+    from windows_shell import install as _install_windows_shell
 
 _cmd = os.fdopen(os.dup(0), 'r', encoding='utf-8')
 _out = os.fdopen(os.dup(1), 'w', encoding='utf-8')
 _null = os.open(os.devnull, os.O_RDONLY)
 os.dup2(_null, 0)
+
 
 _lock = threading.Lock()
 CUR = None   # id of the request being served
@@ -160,7 +163,10 @@ class Shell(InteractiveShell):
         pass
 
 
+
 shell = Shell.instance(colors='NoColor')
+if sys.platform == 'win32':
+    _install_windows_shell()
 shell.system = shell.system_piped  # `!cmd` output goes through sys.stdout
 # Crisp figures on HiDPI screens; the stored png carries its display size, so other tools show it the same size.
 shell.config.InlineBackend.figure_formats = {'retina'}
@@ -189,9 +195,12 @@ def _on_sigint(signum, frame):
 def _poke_main():
     """Deliver an interrupt to the main thread. A real signal aimed at that thread, so a blocking call
     (time.sleep, a socket read) wakes up at once; `interrupt_main` alone only sets a flag that is looked
-    at when the call returns by itself. Windows has no pthread_kill, and there the flag does wake sleeps."""
+    at when the call returns by itself. On Windows raise_signal also sets CPython's SIGINT event,
+    which wakes time.sleep; interrupt_main alone does not set that event."""
     if hasattr(signal, 'pthread_kill'):
         signal.pthread_kill(threading.main_thread().ident, signal.SIGINT)
+    elif sys.platform == 'win32':
+        signal.raise_signal(signal.SIGINT)
     else:
         _thread.interrupt_main()
 

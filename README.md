@@ -45,6 +45,7 @@ npm run build        # main.js + 引擎插件的 dist/
 npm run check        # 往返、输出收集、产物同步、文案成对、清单
 node verify/runner-probe.cjs     # 只测 Python 运行器(需要 Forsion 桌面端检出里的自带 Python)
 node verify/engine-probe.mjs     # 不起应用,直接调引擎插件的路由
+npm run check:windows-kernel -- "C:\path\to\python.exe" # Windows 原生内核、编码、中断、进程树与 venv
 ```
 
 真应用冒烟(隔离 home + 真引擎,不碰开发实例;在仓根跑,`UI_ZOOM=1.1` 再跑一遍):
@@ -76,5 +77,5 @@ Tangu 跑的和页面上跑的是同一个内核,变量互通。输出由谁写�
 - 文字格里 `attachment:` 引用的图片不显示(文件里原样保留)。
 - 文字格用的是应用给插件的 Markdown 编辑器。桌面 2.13.3 起,插件让应用不画它顶上那排「编辑 / 源码 / 预览」;2.13.0 到 2.13.2 上那一排是用样式藏掉的(`style.css` 里有说明)。
 - 手上有没存的改动(停手不到 0.8 秒)时文件恰好被别处改了,以手上的为准。
-- Windows 上没有实测过(中断只走进程内那一条路;关内核时用 `taskkill /T` 收子进程)。网页版 / 手机上「只能看和改」那条路也没有实测过。
+- Windows 11 已实测原生内核、真实 Electron 页面与 GPT 6 Luna 工具链路，结果与复跑命令见 [Windows 验证记录](verify/windows-validation.md)。网页版 / 手机上「只能看和改」那条路尚未实测。
 - Tangu 的三件工具用真模型跑过(2026-10-12,GPT 6 Luna,Genesis 真模型台架的 `--only notebook`):「第三格报错了,改好重跑」「最后加一格再跑」这两句不点名工具的话,模型会用这三件工具,改和跑各弹一张审批,文件守得住。只测了这一个模型、这一种小任务;页面开着的时候 Tangu 来跑(输出由页面落盘)那条路,真模型没走过。

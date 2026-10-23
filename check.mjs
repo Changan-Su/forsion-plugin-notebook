@@ -14,7 +14,9 @@ const ok = (label, fn) => { try { fn(); console.log(`✓ ${label}`) } catch (e) 
 const nbm = await mod('src/nb.ts')
 const { parse, serialize, emptyNotebook, newCell, OutputSink, setSource, source, carriage, stripAnsi, headings, NotebookError, ids, retype, embedTarget } = nbm
 
-const jup = readFileSync('verify/fixtures/jupyter.ipynb', 'utf8')
+// Check both conventions on every host; Git may check fixtures out as CRLF on Windows.
+const jup = readFileSync('verify/fixtures/jupyter.ipynb', 'utf8').replace(/\r\n/g, '\n')
+ok('Windows shell adapter is included in the shipped Python runtime', () => assert.ok(existsSync('tangu-plugins/notebook-kernel/python/windows_shell.py')))
 ok('Jupyter 写的文件:读进来再写出去,一个字节都不变(不认识的键、键序、字符串形式的 source、ANSI、浮点)', () => {
   const { nb, changed } = parse(jup)
   assert.equal(changed, false)
@@ -45,6 +47,25 @@ ok('只改一格的源码:其余部分逐行不变', () => {
   assert.deepEqual(diff, ['    "x = 1\\n",', '    "y = 2\\n"'])
   assert.deepEqual(JSON.parse(serialize(nb)).cells[1].source, ['x = 1\n', 'y = 2\n'])
   assert.equal(JSON.parse(serialize(nb)).cells[2].source, 'df["baseline"]') // 没动过的那格还是字符串形式
+})
+ok('Windows CRLF:原样读写逐字节不变,改单格也保留换行', () => {
+  const text = jup.replace(/\n/g, '\r\n')
+  const { nb } = parse(text)
+  assert.equal(serialize(nb), text)
+  setSource(nb.cells[1], 'x = 1\ny = 2\n')
+  const saved = serialize(nb)
+  assert.ok(!/(?<!\r)\n/.test(saved), 'No bare LF in a CRLF document')
+  const diff = saved.split('\r\n').filter(line => !text.split('\r\n').includes(line))
+  assert.deepEqual(diff, ['    "x = 1\\n",', '    "y = 2\\n"'])
+  assert.deepEqual(JSON.parse(saved).cells[1].source, ['x = 1\n', 'y = 2\n'])
+})
+ok('没动过的文件保留原始缩进及末尾换行;补 id 的迁移仍写回', () => {
+  const text = JSON.stringify(JSON.parse(jup), null, 2)
+  assert.equal(serialize(parse(text).nb), text)
+  const legacy = parse('{"cells":[{"cell_type":"code","source":[],"metadata":{},"outputs":[]}],"metadata":{},"nbformat":4,"nbformat_minor":4}')
+  assert.equal(legacy.changed, true)
+  assert.equal(JSON.parse(serialize(legacy.nb)).nbformat_minor, 5)
+  assert.ok(JSON.parse(serialize(legacy.nb)).cells[0].id)
 })
 ok('4.4 的老文件:补上不重复的 id,小版本抬到 5,别的不动', () => {
   const { nb, changed } = parse(readFileSync('verify/fixtures/v44.ipynb', 'utf8'))

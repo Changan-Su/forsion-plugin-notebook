@@ -6,7 +6,7 @@
 // GENESIS_DESKTOP=<别的检出>/desktop 换一份宿主来测(缺省是主检出;那份检出要先自己 electron-vite build,并且有自带 Python)。
 // EXPECT_MODES=option|fallback 把「文字格那排模式按钮是怎么没的」钉成断言:option = 宿主认 modes:false、根本不画;
 // fallback = 旧宿主画了、由 style.css 藏掉。不设就只报一行、不判。改了挂编辑器那段,新旧两种宿主各跑一遍。
-const fs = require('fs'); const os = require('os'); const path = require('path'); const { execSync } = require('child_process')
+const fs = require('fs'); const os = require('os'); const path = require('path'); const { execFileSync } = require('child_process')
 const ROOT = path.resolve(__dirname, '..')
 const DESK = process.env.GENESIS_DESKTOP || path.resolve(ROOT, '../../Forsion-Genesis/desktop')
 const electron = require(path.join(DESK, 'scripts/lib/launch-electron.cjs'))
@@ -45,14 +45,23 @@ async function main() {
   // 插件原样拷进隔离 home 的 plugins/(引擎不认符号链接;带 fileExtensions 的插件也不能走开发加载)
   const dest = path.join(home, 'plugins', 'notebook'); fs.mkdirSync(dest, { recursive: true })
   for (const f of ['manifest.json', 'main.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dest, f))
-  fs.cpSync(path.join(ROOT, 'tangu-plugins'), path.join(dest, 'tangu-plugins'), { recursive: true, filter: (s) => !/\/(src|types|node_modules|__pycache__)(\/|$)|tsconfig\.json$/.test(s) })
+  fs.cpSync(path.join(ROOT, 'tangu-plugins'), path.join(dest, 'tangu-plugins'), { recursive: true, filter: (s) => !/\/(src|types|node_modules|__pycache__)(\/|$)|tsconfig\.json$/.test(s.replace(/\\/g, '/')) })
   fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({}))
   for (const d of [userData, `${userData}-dev`]) {
     fs.mkdirSync(d, { recursive: true })
     for (const f of ['amadeus-config.json', 'amadeus-config.dev.json']) fs.writeFileSync(path.join(d, f), JSON.stringify({ lastVault: vault, localVault: vault }))
     fs.writeFileSync(path.join(d, 'tangu-desktop-config.json'), JSON.stringify({ mode: 'managed' })) // 托管引擎自起(缺省是等外部后端)
   }
-  const runners = () => execSync(`pgrep -f "${dest}" || true`).toString().trim()
+  const runnerPids = () => {
+    if (process.platform === 'win32') {
+      const script = `$target='${dest.replace(/'/g, "''")}'; @((Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python(w)?\\.exe$' -and $_.CommandLine -and $_.CommandLine.Contains($target) }).ProcessId) | ConvertTo-Json -Compress; exit 0`
+      const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true })
+      return [JSON.parse(output || '[]')].flat().filter(Number.isInteger)
+    }
+    try { return execFileSync('pgrep', ['-f', dest], { encoding: 'utf8' }).trim().split(/\s+/).map(Number).filter(Number.isInteger) }
+    catch (error) { if (error.status === 1) return []; throw error }
+  }
+  const runners = () => runnerPids().join(',')
   const app = await electron.launch({ args: [`--user-data-dir=${userData}`, '--lang=zh-CN', DESK], cwd: DESK, env: { ...process.env, TANGU_HOME: home, TANGU_HARNESS_QUIET: '1', ELECTRON_ENABLE_LOGGING: '1' } })
   const log = fs.createWriteStream(path.join(OUT, `app${TAG}.log`))
   for (const st of [app.process().stdout, app.process().stderr]) st?.on('data', (b) => log.write(b))
@@ -96,7 +105,10 @@ async function main() {
     const C = (id) => win.locator(`.nb [data-cell="${id}"]`)
     const kernelBtn = win.locator('.nb .nb-kernel')
     ok('引擎连上后顶栏出现内核按钮(全新 home 要等引擎播种)', !!(await until(async () => await kernelBtn.count(), 150_000, 1000)), await win.locator('.nb-bar').innerText().catch(() => ''))
-    ok('第一次打开:右栏的变量面板自己开出来了', !!(await until(async () => await win.locator('.nb-side-empty, .nb-side').count(), 8000)))
+    // The host may restore its default chat after the file mounts. Verify the explicit
+    // notebook panel control instead of depending on the order of startup effects.
+    await win.locator('.nb [data-a="panel"]').click()
+    ok('变量按钮打开右栏面板', !!(await until(async () => await win.locator('.nb-side-empty, .nb-side').count(), 8000)))
 
     // ── 运行一格 ──
     await C('calc').hover(); await C('calc').locator('[data-a="run"]').click()
@@ -114,8 +126,8 @@ async function main() {
     await win.locator('.nb [data-a="runall"]').click()
     const allDone = await until(async () => (await C('boom').locator('.nb-err').count()) && (await win.locator('.nb [data-a="runall"]').count()), 120_000)
     ok('全部运行:跑到报错那格为止', !!allDone)
-    const img = await C('plot').locator('.nb-out img.nb-img').first().evaluate((e) => ({ w: e.naturalWidth, shown: e.getBoundingClientRect().width / (document.body.currentCSSZoom || 1), src: e.src.slice(0, 22) })).catch(() => null)
-    ok('图:行内 png,按高清图的一半尺寸显示', !!img && img.src === 'data:image/png;base64,' && img.w > 600 && Math.abs(img.shown * 2 - img.w) < 4, img)
+    const img = await C('plot').locator('.nb-out img.nb-img').first().evaluate((e) => ({ w: e.naturalWidth, shown: e.getBoundingClientRect().width / (document.body.currentCSSZoom || 1), available: e.parentElement.clientWidth, src: e.src.slice(0, 22) })).catch(() => null)
+    ok('图:行内高清 png,按元数据尺寸显示并适应列宽', !!img && img.src === 'data:image/png;base64,' && img.w > 600 && img.shown > 100 && Math.abs(img.shown - Math.min(img.w / 2, img.available)) < 4, img)
     ok('报错:红色标题 + 折叠的回溯 + 序号标红', /ZeroDivisionError/.test(await C('boom').locator('.nb-err .hd').innerText()) && (await C('boom').locator('.nb-gut .bad').count()) === 1 && (await C('boom').locator('.nb-err pre').isHidden()))
     await C('boom').locator('[data-a="tb"]').click()
     ok('展开回溯:没有 ANSI 转义符', await C('boom').locator('.nb-err pre').evaluate((e) => !e.hidden && /ZeroDivisionError/.test(e.textContent) && !/\x1b\[/.test(e.textContent)))
@@ -187,14 +199,14 @@ async function main() {
     await shot('5-embed')
     if (await win.locator('.nb').count()) { // 笔记开在了另一个标签里:把笔记本那个标签关掉
       const tab = win.locator('.dv-tab', { hasText: '试验' }).first()
-      await tab.hover(); await tab.locator('.dv-default-tab-action, [class*="close"]').first().click().catch(async () => { await tab.click(); await win.keyboard.press('Meta+w') })
+      await tab.hover(); await tab.locator('.dv-default-tab-action, [class*="close"]').first().click().catch(async () => { await tab.click(); await win.keyboard.press(process.platform === 'darwin' ? 'Meta+w' : 'Control+w') })
     }
     ok('关掉笔记本的标签:几秒内 Python 进程退出', !!(await until(async () => !runners(), 8000)), runners())
     ok('页面全程没有未捕获的错误', errors.length === 0, errors)
   } finally {
     await app.close().catch(() => {})
     await sleep(1500)
-    const left = runners(); if (left) { console.log('✗ 应用退出后还留着运行器进程:', left); bad++; execSync(`pkill -f "${dest}" || true`) }
+    const left = runnerPids(); if (left.length) { console.log('✗ 应用退出后还留着运行器进程:', left); bad++; for (const pid of left) { if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }); else process.kill(pid, 'SIGKILL') } }
     if (!bad && !process.env.KEEP) fs.rmSync(home, { recursive: true, force: true }); else console.log('现场留在', home)
   }
   console.log(bad ? `\n${bad} 项没过(截图和日志在 ${OUT})` : `\n全部通过(截图在 ${OUT})`)

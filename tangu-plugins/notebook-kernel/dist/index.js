@@ -282,12 +282,16 @@ var Kernel = class {
     this.proc = null;
     this.abortAll("KernelRestarted", why === "restart" ? "\u5185\u6838\u91CD\u542F\u4E86" : "\u5185\u6838\u5173\u95ED\u4E86");
     if (p) {
-      try {
-        p.stdin?.end();
-      } catch {
+      if (process.platform === "win32") {
+        killTree(p, "SIGKILL");
+      } else {
+        try {
+          p.stdin?.end();
+        } catch {
+        }
+        killTree(p, "SIGTERM");
+        setTimeout(() => killTree(p, "SIGKILL"), 1500).unref?.();
       }
-      killTree(p, "SIGTERM");
-      setTimeout(() => killTree(p, "SIGKILL"), 1500).unref?.();
     }
     this.state = "dead";
     this.python = null;
@@ -341,9 +345,23 @@ function killTree(p, sig) {
       if (p.pid) process.kill(-p.pid, sig);
       return;
     }
-    if (sig === "SIGKILL" && p.pid) spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }).on("error", () => {
-    });
-    else p.kill(sig);
+    if (sig === "SIGKILL" && p.pid && p.exitCode === null && p.signalCode === null) {
+      const fallback = () => {
+        if (p.exitCode !== null || p.signalCode !== null) return;
+        try {
+          p.stdin?.end();
+        } catch {
+        }
+        try {
+          p.kill("SIGKILL");
+        } catch {
+        }
+      };
+      const taskkill = join(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32", "taskkill.exe");
+      spawn(taskkill, ["/pid", String(p.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }).on("error", fallback).on("exit", (code) => {
+        if (code !== 0) fallback();
+      });
+    } else p.kill(sig);
   } catch {
     try {
       p.kill(sig);
@@ -514,6 +532,7 @@ function newCell(type, taken, source2 = "") {
 }
 var NUMERIC_KEYS = /* @__PURE__ */ new Set(["nbformat", "nbformat_minor", "execution_count", "width", "height"]);
 var rawJSON = JSON.rawJSON;
+var originals = /* @__PURE__ */ new WeakMap();
 function parseJson(text) {
   if (!rawJSON) return JSON.parse(text);
   return JSON.parse(text, (k, v, c) => typeof v === "number" && c?.source !== void 0 && c.source !== JSON.stringify(v) && !NUMERIC_KEYS.has(k) ? rawJSON(c.source) : v);
@@ -530,6 +549,7 @@ function parse(text) {
   if (typeof raw.nbformat === "number" && raw.nbformat < 4) throw new NotebookError("old", `nbformat ${raw.nbformat}`);
   if (raw.nbformat !== 4 || !Array.isArray(raw.cells) || !raw.cells.every(isObj)) throw new NotebookError("bad", "not an nbformat 4 notebook");
   const nb = raw;
+  originals.set(nb, { text, json: JSON.stringify(nb), newline: text.match(/\r?\n/)?.[0] ?? "\n" });
   if (!isObj(nb.metadata)) nb.metadata = {};
   if (typeof nb.nbformat_minor !== "number") nb.nbformat_minor = 0;
   const taken = /* @__PURE__ */ new Set();
@@ -549,7 +569,12 @@ function parse(text) {
   return { nb, changed };
 }
 var TEXT_MIME = /^text\/|^image\/svg\+xml$|^application\/javascript$/;
-var serialize = (nb) => JSON.stringify(nb, null, 1) + "\n";
+var serialize = (nb) => {
+  const original = originals.get(nb);
+  if (original && JSON.stringify(nb) === original.json) return original.text;
+  const text = JSON.stringify(nb, null, 1) + "\n";
+  return original?.newline === "\r\n" ? text.replace(/\n/g, "\r\n") : text;
+};
 var source = (c) => joined(c.source);
 var setSource = (c, text) => {
   c.source = lines(text);

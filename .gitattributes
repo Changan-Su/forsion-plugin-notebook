@@ -1,0 +1,2 @@
+# CSS is embedded verbatim in the generated JavaScript bundle.
+*.css text eol=lf
