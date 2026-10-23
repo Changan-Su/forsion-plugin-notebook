@@ -12,7 +12,7 @@
 ## 验证
 
 - `npm run verify`：类型、构建、19 项自检通过。LF、CRLF、原样保存、旧文件迁移、输出格式、双语和发布产物均有检查。
-- `npm run check:windows-kernel -- "C:\path\to\python.exe"`：21 项真实 Windows Python 检查，覆盖中文及空格路径、`!dir`、`%timeit`、Python 与 cmd 同行混合输出、直接子进程、私有管道 `text=True`、捕获 `!dir`、中断 shell/休眠/死循环、取消排队、保留变量、进程树、缺失解释器回退、无 System32 PATH 的清理，以及实际 `.venv\Scripts\python.exe` 的发现和切换。
+- `npm run check:windows-kernel -- "C:\path\to\python.exe"`：24 项真实 Windows Python 检查，覆盖中文及空格路径、`!dir`、`%timeit`、Python 与 cmd 同行混合输出、直接子进程、私有管道 `text=True`、捕获文本的空行/制表符/尾空格、stdin EOF、中断 shell/休眠/死循环、取消排队、保留变量、进程树、缺失解释器回退、无 System32 PATH 的清理，以及实际 `.venv\Scripts\python.exe` 的发现、切换和带空格路径的 shell 调用。另提供 `FORSION_TEST_OLD_PYTHON`，可使用实际旧解释器核对禁用状态。
 - 真实应用 `verify/smoke.cjs`：35 项通过；实际点击运行，输出/图/错误写盘，菜单与变量栏，重启内核，编辑/阅读，嵌入，关闭标签和应用的进程清理。图按列宽适配；变量面板通过明确按钮打开，避免依赖宿主启动时恢复侧栏的顺序。
 - 真引擎 + GPT 6 Luna：`--only notebook` 场景 12 项通过，模型实际使用 read/edit/run，4 次审批全部通过。没有用假模型代替。
 - 聚焦 Codex 评审发现的 taskkill PATH 依赖已修复，并新增真实缺 PATH 回归。编码路径最终保留原始字节管道；没有保留编码猜测、全局改写 Python 编码或 ConPTY 文本重绘方案。捕获的空行、制表符、尾空格、stdin EOF 及子进程 `text=True` 均有真实回归。
@@ -25,4 +25,4 @@ $env:FORSION_TEST_DESKTOP = 'left'
 node verify/smoke.cjs
 ```
 
-机器没有额外安装 conda 或低于 3.10 的 Python，未声称实测这些安装；实际 venv 已建立、枚举并运行。未发布商店版本，本轮修复由源码主分支提供。
+未额外搭建 conda，未声称实测 conda 安装；实际 venv 已建立、枚举并运行。未发布商店版本，本轮修复由源码主分支提供。

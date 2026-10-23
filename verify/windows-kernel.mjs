@@ -119,6 +119,15 @@ try {
   check('Selected interpreter executes the code', result.some(e => e.t === 'stream' && e.text.includes(venvPy)))
   result = await run('spaced-shell', '!"' + venvPy + '" -c "print(\'中文 spaced interpreter\')"')
   check('Shell quoting preserves a Chinese interpreter path with spaces', result.some(e => e.t === 'stream' && e.text.includes('中文 spaced interpreter')))
+  const oldPython = process.env.FORSION_TEST_OLD_PYTHON
+  if (oldPython && existsSync(oldPython)) {
+    const priorPath = process.env.PATH
+    try {
+      process.env.PATH = dirname(oldPython) + ';' + (priorPath || '')
+      const old = (await listEnvs(folder)).find(e => e.path.toLowerCase() === oldPython.toLowerCase())
+      check('An actual older interpreter is listed but disabled', old?.why === 'old' && old.ok === false)
+    } finally { if (priorPath === undefined) delete process.env.PATH; else process.env.PATH = priorPath }
+  }
 } finally {
   kernel.stop('shutdown')
   if (child && alive(child)) process.kill(child)
