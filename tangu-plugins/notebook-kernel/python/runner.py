@@ -27,11 +27,14 @@ import threading
 import time
 import types
 import warnings
+if sys.platform == 'win32':
+    from windows_shell import run_command as _windows_command
 
 _cmd = os.fdopen(os.dup(0), 'r', encoding='utf-8')
 _out = os.fdopen(os.dup(1), 'w', encoding='utf-8')
 _null = os.open(os.devnull, os.O_RDONLY)
 os.dup2(_null, 0)
+
 
 _lock = threading.Lock()
 CUR = None   # id of the request being served
@@ -159,6 +162,21 @@ class Shell(InteractiveShell):
     def enable_gui(self, gui=None):  # `%matplotlib inline` asks for this; there is no GUI loop here
         pass
 
+    if sys.platform == 'win32':
+        def system_piped(self, cmd):
+            if cmd.rstrip().endswith('&'):
+                raise OSError('Background processes not supported.')
+            self.user_ns['_exit_code'] = _windows_command(self.var_expand(cmd, depth=1))
+
+        def getoutput(self, cmd, split=True, depth=0):
+            from IPython.utils.text import SList, LSString
+            if cmd.rstrip().endswith('&'):
+                raise OSError('Background processes not supported.')
+            chunks = []
+            _windows_command(self.var_expand(cmd, depth=depth + 1), chunks.append)
+            text = ''.join(chunks)
+            return SList(text.splitlines()) if split else LSString(text)
+
 
 shell = Shell.instance(colors='NoColor')
 shell.system = shell.system_piped  # `!cmd` output goes through sys.stdout
@@ -189,9 +207,12 @@ def _on_sigint(signum, frame):
 def _poke_main():
     """Deliver an interrupt to the main thread. A real signal aimed at that thread, so a blocking call
     (time.sleep, a socket read) wakes up at once; `interrupt_main` alone only sets a flag that is looked
-    at when the call returns by itself. Windows has no pthread_kill, and there the flag does wake sleeps."""
+    at when the call returns by itself. On Windows raise_signal also sets CPython's SIGINT event,
+    which wakes time.sleep; interrupt_main alone does not set that event."""
     if hasattr(signal, 'pthread_kill'):
         signal.pthread_kill(threading.main_thread().ident, signal.SIGINT)
+    elif sys.platform == 'win32':
+        signal.raise_signal(signal.SIGINT)
     else:
         _thread.interrupt_main()
 

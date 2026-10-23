@@ -78,6 +78,8 @@ export function newCell(type: 'code' | 'markdown', taken: Set<string>, source = 
 // 没有这两个接口的老运行时(Node 20 及更早)退回普通解析:那里数字的写法不保留,超大整数会失真。
 const NUMERIC_KEYS = new Set(['nbformat', 'nbformat_minor', 'execution_count', 'width', 'height'])
 const rawJSON = (JSON as unknown as { rawJSON?: (text: string) => unknown }).rawJSON
+// Keep file formatting outside the JSON tree: it must never become notebook metadata.
+const originals = new WeakMap<Notebook, { text: string; json: string; newline: string }>()
 function parseJson(text: string): unknown {
   if (!rawJSON) return JSON.parse(text)
   return (JSON.parse as (t: string, r: (this: unknown, k: string, v: unknown, c?: { source?: string }) => unknown) => unknown)(text, (k, v, c) =>
@@ -101,6 +103,7 @@ export function parse(text: string): { nb: Notebook; changed: boolean } {
   if (typeof raw.nbformat === 'number' && raw.nbformat < 4) throw new NotebookError('old', `nbformat ${raw.nbformat}`)
   if (raw.nbformat !== 4 || !Array.isArray(raw.cells) || !raw.cells.every(isObj)) throw new NotebookError('bad', 'not an nbformat 4 notebook')
   const nb = raw as unknown as Notebook
+  originals.set(nb, { text, json: JSON.stringify(nb), newline: text.match(/\r?\n/)?.[0] ?? '\n' })
   if (!isObj(nb.metadata)) nb.metadata = {}
   if (typeof nb.nbformat_minor !== 'number') nb.nbformat_minor = 0
   // 每格都要有一个不重复的 id(运行时认格子、笔记里按格嵌入都靠它)。4.5 之前的文件没有:补上,并把小版本抬到 5
@@ -123,7 +126,12 @@ const TEXT_MIME = /^text\/|^image\/svg\+xml$|^application\/javascript$/
 
 /** 序列化成 Jupyter 写的样子。不做任何整理:哪里要拆成「一行一个元素」,在改的那一刻就拆好了
  *  (`setSource`、`OutputSink.finish`)—— 没动过的格子,文件里原来是什么样写回去还是什么样。 */
-export const serialize = (nb: Notebook): string => JSON.stringify(nb, null, 1) + '\n'
+export const serialize = (nb: Notebook): string => {
+  const original = originals.get(nb)
+  if (original && JSON.stringify(nb) === original.json) return original.text
+  const text = JSON.stringify(nb, null, 1) + '\n'
+  return original?.newline === '\r\n' ? text.replace(/\n/g, '\r\n') : text
+}
 
 export const source = (c: Cell): string => joined(c.source)
 export const setSource = (c: Cell, text: string): void => { c.source = lines(text) }

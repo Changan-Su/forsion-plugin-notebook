@@ -8,6 +8,7 @@
     "build": "node build.mjs",
     "vendor": "node scripts/vendor.mjs",
     "check": "node check.mjs",
+    "check:windows-kernel": "node verify/windows-kernel.mjs",
     "typecheck": "tsc --noEmit && tsc -p tangu-plugins/notebook-kernel",
     "verify": "npm run typecheck && npm run build && npm run check"
   },

@@ -248,10 +248,15 @@ export class Kernel {
     const p = this.proc; this.proc = null;
     this.abortAll('KernelRestarted', why === 'restart' ? '内核重启了' : '内核关闭了');
     if (p) {
-      try { p.stdin?.end(); } catch { /* gone */ }
-      // 先客气地请整个进程组退出,1.5 秒后不管运行器自己退没退都强杀一遍:代码里起的子进程可能不理会前一个信号。
-      killTree(p, 'SIGTERM');
-      setTimeout(() => killTree(p, 'SIGKILL'), 1500).unref?.();
+      if (process.platform === 'win32') {
+        // taskkill must enumerate descendants while the parent is alive. Ending stdin or
+        // p.kill() first loses the tree and leaves notebook subprocesses orphaned.
+        killTree(p, 'SIGKILL');
+      } else {
+        try { p.stdin?.end(); } catch { /* gone */ }
+        killTree(p, 'SIGTERM');
+        setTimeout(() => killTree(p, 'SIGKILL'), 1500).unref?.();
+      }
     }
     this.state = 'dead'; this.python = null; this.execCells.clear();
     if (why === 'shutdown') { this.error = undefined; this.fellBack = undefined; }
@@ -296,7 +301,18 @@ export class Kernel {
 function killTree(p: ChildProcess, sig: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
   try {
     if (process.platform !== 'win32') { if (p.pid) process.kill(-p.pid, sig); return; }
-    if (sig === 'SIGKILL' && p.pid) spawn('taskkill', ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => {});
+    if (sig === 'SIGKILL' && p.pid && p.exitCode === null && p.signalCode === null) {
+      const fallback = () => {
+        if (p.exitCode !== null || p.signalCode !== null) return;
+        try { p.stdin?.end(); } catch { /* gone */ }
+        try { p.kill('SIGKILL'); } catch { /* gone */ }
+      };
+      // A selected environment may have a minimal PATH. The tree killer belongs to
+      // Windows, not that Python environment; resolve it independently of PATH.
+      const taskkill = join(process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows', 'System32', 'taskkill.exe');
+      spawn(taskkill, ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        .on('error', fallback).on('exit', code => { if (code !== 0) fallback(); });
+    }
     else p.kill(sig);
   } catch { try { p.kill(sig); } catch { /* gone */ } }
 }
