@@ -2,7 +2,7 @@
 // node verify/windows-kernel.mjs <python.exe>
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -61,11 +61,22 @@ try {
   result = await run('same-line', '!"' + py + '" -X utf8 -c "print(\'中文 \', end=\'\')" & echo 文件')
   const sameLine = result.filter(e => e.t === 'stream').map(e => e.text).join('')
   check('UTF-8 Python and native cmd text stay intact on the same line: ' + JSON.stringify(sameLine), sameLine.includes('中文 文件'))
-  kernel.exec([{ cell: 'shell-interrupt', code: '!ping -n 60 127.0.0.1' }])
-  await until(es => es.some(e => e.cell === 'shell-interrupt' && e.t === 'stream' && e.text.includes('127.0.0.1')))
+  const shellStarted = join(folder, 'shell-started.txt')
+  kernel.exec([{ cell: 'shell-interrupt', code: '!echo ready > "' + shellStarted + '" & ping -n 60 127.0.0.1' }])
+  // IPython buffers a shell pipe until EOF. Use an actual command-side marker,
+  // not an expectation of streaming output, to prove the shell has started.
+  await until(() => existsSync(shellStarted))
+  await new Promise(r => setTimeout(r, 500))
   let interruptStart = Date.now(); kernel.interrupt()
   await until(es => es.some(e => e.cell === 'shell-interrupt' && e.t === 'done'), 8000)
   check('Windows shell process interrupts without wedging the kernel', Date.now() - interruptStart < 8000 && events.some(e => e.cell === 'shell-interrupt' && e.ename === 'KeyboardInterrupt'))
+  const exactOutput = 'alpha\tbeta\n\nend   \n'
+  const exactCommand = '"' + py + '" -c "import sys;sys.stdout.write(' + JSON.stringify(exactOutput).replace(/"/g, "'") + ')"'
+  result = await run('exact-output', 'out = get_ipython().getoutput(' + JSON.stringify(exactCommand) + ', split=False)\nassert out.replace("\\r\\n", "\\n") == ' + JSON.stringify(exactOutput) + '\nprint("EXACT-OUTPUT")')
+  check('Captured shell preserves tabs, blank lines and trailing spaces', result.some(e => e.t === 'stream' && e.text.includes('EXACT-OUTPUT')))
+  const eofCommand = '"' + py + '" -c "import sys;print(len(sys.stdin.read()))"'
+  result = await run('shell-stdin', 'out = get_ipython().getoutput(' + JSON.stringify(eofCommand) + ')\nassert out == ["0"]\nprint("STDIN-EOF")')
+  check('Captured shell closes stdin and completes on EOF', result.some(e => e.t === 'stream' && e.text.includes('STDIN-EOF')))
   // Print from inside the sleep: the test must not interrupt before user code starts.
   kernel.exec([{ cell: 'sleep', code: 'import time\nprint("sleep-entered", flush=True)\ntime.sleep(60)' }, { cell: 'cancelled', code: 'print("must not run")' }])
   await until(es => es.some(e => e.cell === 'sleep' && e.t === 'stream' && e.text.includes('sleep-entered')))
@@ -106,6 +117,8 @@ try {
   check('Kernel switches to the selected virtual environment', (await kernel.open(discovered)).python?.path === venvPy)
   result = await run('executable', 'import sys\nprint(sys.executable)')
   check('Selected interpreter executes the code', result.some(e => e.t === 'stream' && e.text.includes(venvPy)))
+  result = await run('spaced-shell', '!"' + venvPy + '" -c "print(\'中文 spaced interpreter\')"')
+  check('Shell quoting preserves a Chinese interpreter path with spaces', result.some(e => e.t === 'stream' && e.text.includes('中文 spaced interpreter')))
 } finally {
   kernel.stop('shutdown')
   if (child && alive(child)) process.kill(child)

@@ -28,7 +28,7 @@ import time
 import types
 import warnings
 if sys.platform == 'win32':
-    from windows_shell import run_command as _windows_command
+    from windows_shell import install as _install_windows_shell
 
 _cmd = os.fdopen(os.dup(0), 'r', encoding='utf-8')
 _out = os.fdopen(os.dup(1), 'w', encoding='utf-8')
@@ -162,23 +162,11 @@ class Shell(InteractiveShell):
     def enable_gui(self, gui=None):  # `%matplotlib inline` asks for this; there is no GUI loop here
         pass
 
-    if sys.platform == 'win32':
-        def system_piped(self, cmd):
-            if cmd.rstrip().endswith('&'):
-                raise OSError('Background processes not supported.')
-            self.user_ns['_exit_code'] = _windows_command(self.var_expand(cmd, depth=1))
-
-        def getoutput(self, cmd, split=True, depth=0):
-            from IPython.utils.text import SList, LSString
-            if cmd.rstrip().endswith('&'):
-                raise OSError('Background processes not supported.')
-            chunks = []
-            _windows_command(self.var_expand(cmd, depth=depth + 1), chunks.append)
-            text = ''.join(chunks)
-            return SList(text.splitlines()) if split else LSString(text)
 
 
 shell = Shell.instance(colors='NoColor')
+if sys.platform == 'win32':
+    _install_windows_shell()
 shell.system = shell.system_piped  # `!cmd` output goes through sys.stdout
 # Crisp figures on HiDPI screens; the stored png carries its display size, so other tools show it the same size.
 shell.config.InlineBackend.figure_formats = {'retina'}

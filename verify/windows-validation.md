@@ -7,7 +7,7 @@
 - `.ipynb` 的 CRLF 被保存成 LF；未编辑的文件现在保留原始字节，编辑后保留换行约定，旧文件补 id 的迁移仍生效。
 - `time.sleep(60)` 收到中断后不能及时退出；Windows 改为 `signal.raise_signal(SIGINT)`，实际唤醒休眠，内核与变量保留。
 - 先结束父 Python 再调用 `taskkill /T` 会留下子进程；现在父进程仍在时先收整棵树。taskkill 使用 System32 绝对路径，启动或退出失败有终止兜底。
-- `!dir` 的中文文件名乱码；Windows 的 `!command` 改用无窗口的 ConPTY，原生命令和 Python 程序的控制台输出由系统统一转成 UTF-8。没有更改父 Python 的环境、私有子进程管道或系统代码页。
+- `!dir` 的中文文件名乱码；在私有隐藏控制台里设定 UTF-8 后，另起 CMD 执行命令（CMD 会在启动时缓存代码页）。保留 IPython 原有管道、UNC 路径处理、错误策略与捕获语义，没有更改父 Python 的环境或系统代码页。
 
 ## 验证
 
@@ -15,7 +15,7 @@
 - `npm run check:windows-kernel -- "C:\path\to\python.exe"`：21 项真实 Windows Python 检查，覆盖中文及空格路径、`!dir`、`%timeit`、Python 与 cmd 同行混合输出、直接子进程、私有管道 `text=True`、捕获 `!dir`、中断 shell/休眠/死循环、取消排队、保留变量、进程树、缺失解释器回退、无 System32 PATH 的清理，以及实际 `.venv\Scripts\python.exe` 的发现和切换。
 - 真实应用 `verify/smoke.cjs`：35 项通过；实际点击运行，输出/图/错误写盘，菜单与变量栏，重启内核，编辑/阅读，嵌入，关闭标签和应用的进程清理。图按列宽适配；变量面板通过明确按钮打开，避免依赖宿主启动时恢复侧栏的顺序。
 - 真引擎 + GPT 6 Luna：`--only notebook` 场景 12 项通过，模型实际使用 read/edit/run，4 次审批全部通过。没有用假模型代替。
-- 聚焦 Codex 评审发现的 taskkill PATH 依赖已修复，并新增真实缺 PATH 回归。编码实现采用 ConPTY，没有保留按整行猜测编码或全局改写 Python stdio 编码的方案；捕获子进程的 `text=True` 也有真实回归。
+- 聚焦 Codex 评审发现的 taskkill PATH 依赖已修复，并新增真实缺 PATH 回归。编码路径最终保留原始字节管道；没有保留编码猜测、全局改写 Python 编码或 ConPTY 文本重绘方案。捕获的空行、制表符、尾空格、stdin EOF 及子进程 `text=True` 均有真实回归。
 
 真实应用复跑（PowerShell，先构建宿主并备好内置 Python）：
 
