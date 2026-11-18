@@ -2,7 +2,7 @@
   "id": "notebook",
   "name": "Jupyter 笔记本",
   "nameEn": "Jupyter Notebook",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "apiVersion": 1,
   "minAppVersion": "2.13.0",
   "author": "Forsion",

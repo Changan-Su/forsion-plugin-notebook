@@ -1,13 +1,15 @@
-// 不起应用的自检:① .ipynb 往返(写盘路径)② 输出收集 ③ main.js 与 src 同步 ④ 文案成对 ⑤ 清单与引擎插件对得上。
+// 不起应用的自检:① .ipynb 往返(写盘路径)② 输出收集 ③ main.js 与 src 同步 ④ 文案成对 ⑤ 清单与引擎插件对得上
+// ⑥ 每本笔记本记住的解释器(插件自己的数据):读不出来时不写、提示;读回来之前选的等读完再存。
 // 跑:npm run check
 import { build } from 'esbuild'
 import { readFileSync, existsSync } from 'node:fs'
 import assert from 'node:assert/strict'
 import { options, engineOptions } from './build.mjs'
 
-const mod = async (entry) => {
+/** fresh = 另起一个模块实例(模块里的状态各自一份,像插件重新加载了一次)。 */
+const mod = async (entry, fresh = false) => {
   const out = await build({ entryPoints: [entry], bundle: true, format: 'esm', write: false, platform: 'node', logLevel: 'silent' })
-  return import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`)
+  return import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}${fresh ? `#${Math.random()}` : ''}`)
 }
 let bad = 0
 const ok = (label, fn) => { try { fn(); console.log(`✓ ${label}`) } catch (e) { bad++; console.log(`✗ ${label}\n    ${String(e.message).split('\n').slice(0, 6).join('\n    ')}`) } }
@@ -131,7 +133,7 @@ if (existsSync('src/index.ts')) {
       assert.ok(!/[一-鿿]/.test(v[1]), `${k} 的英文里有汉字`)
       assert.deepEqual((v[0].match(/\{\w+\}/g) ?? []).sort(), (v[1].match(/\{\w+\}/g) ?? []).sort(), `${k} 的占位符不一致`)
     }
-    const used = new Set([...readFileSync('src/view.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g), ...readFileSync('src/panels.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g), ...readFileSync('src/index.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g), ...readFileSync('src/outputs.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g)].map((m) => m[1]))
+    const used = new Set([...readFileSync('src/view.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g), ...readFileSync('src/panels.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g), ...readFileSync('src/index.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g), ...readFileSync('src/outputs.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g), ...readFileSync('src/prefs.ts', 'utf8').matchAll(/\bt\('([\w.]+)'/g)].map((m) => m[1]))
     for (const k of used) assert.ok(M[k], `源码用到的 ${k} 不在字典里`)
   })
   const man = JSON.parse(readFileSync('manifest.json', 'utf8')); const eng = JSON.parse(readFileSync('tangu-plugins/notebook-kernel/tangu-plugin.json', 'utf8'))
@@ -139,6 +141,88 @@ if (existsSync('src/index.ts')) {
     assert.deepEqual(man.fileExtensions, ['.ipynb']); assert.ok(man.nameEn && man.descriptionEn && !/[一-鿿]/.test(man.nameEn + man.descriptionEn))
     assert.equal(man.version, eng.version); assert.equal(man.version, JSON.parse(readFileSync('package.json', 'utf8')).version)
     for (const f of ['dist/index.js', 'python/runner.py', 'python/vendor/IPython/__init__.py']) assert.ok(existsSync(`tangu-plugins/notebook-kernel/${f}`), f)
+  })
+}
+
+// ⑥ 每本笔记本记住的解释器(src/prefs.ts)。宿主 2026-11-17 起:存过却读不出来时 loadData reject,code = 'plugin-data-unreadable'。
+{
+  const unreadable = () => Object.assign(new Error('plugin-data-unreadable'), { code: 'plugin-data-unreadable', reason: 'invalid-json' })
+  const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0)) }
+  const okA = async (label, fn) => { try { await fn(); console.log(`✓ ${label}`) } catch (e) { bad++; console.log(`✗ ${label}\n    ${String(e.message).split('\n').slice(0, 6).join('\n    ')}`) } }
+  globalThis.ctx = { getLocale: () => 'zh' }
+  const { M: MSG, t: tr } = await mod('src/i18n.ts')
+  /** 一个新的插件实例 + 假宿主(存进去的按 JSON 拷一份记下,和宿主一样在调用时定格)。 */
+  const fresh = async (loadData) => {
+    const h = { saves: [], notices: [] }
+    globalThis.ctx = { getLocale: () => 'zh', loadData, saveData: async (v) => { h.saves.push(JSON.parse(JSON.stringify(v))) }, notify: (m, o) => h.notices.push({ m, o }) }
+    h.P = await mod('src/prefs.ts', true)
+    return h
+  }
+  const ready = async (h) => { await h.P.prefsReady; await settle() }
+  const blockedRun = async () => {
+    const h = await fresh(async () => { throw unreadable() })
+    await ready(h)
+    h.notices0 = h.notices.length
+    h.P.choosePython?.('a.ipynb', '/envs/a/bin/python'); h.P.choosePython?.('b.ipynb', null)
+    await settle()
+    return h
+  }
+  await okA('解释器选择存过却读不出来:选解释器不写插件数据', async () => {
+    const h = await blockedRun()
+    assert.equal(h.saves.length, 0, `写了 ${JSON.stringify(h.saves)}`)
+  })
+  await okA('解释器选择存过却读不出来:选的照样用,只在这次有效', async () => {
+    const h = await blockedRun()
+    assert.equal(h.P.pythonFor?.('a.ipynb'), '/envs/a/bin/python'); assert.equal(h.P.pythonFor?.('b.ipynb'), undefined)
+  })
+  await okA('解释器选择存过却读不出来:读的时候提示一次,每次选再提示「不会记住」(级别 warning)', async () => {
+    const h = await blockedRun()
+    assert.equal(h.notices0, 1, '读的时候没提示')
+    assert.deepEqual(h.notices.map((n) => [n.m, n.o?.level]), [[tr('prefs.unreadable'), 'warning'], [tr('prefs.notKept'), 'warning'], [tr('prefs.notKept'), 'warning']])
+  })
+  await okA('解释器选择的两条提示中英都有,英文不夹汉字、不带路径', () => {
+    for (const k of ['prefs.unreadable', 'prefs.notKept']) {
+      const [zh, en] = MSG[k] ?? []
+      assert.ok(zh && en, `${k} 缺文案`); assert.ok(!/[一-鿿]/.test(en), `${k} 英文里有汉字`); assert.ok(!/[/\\]/.test(zh + en), `${k} 文案里不写路径`)
+    }
+  })
+  await okA('旧宿主(读不出来也回 null):选了照常记下、不提示', async () => {
+    const h = await fresh(async () => null)
+    await ready(h)
+    h.P.choosePython?.('a.ipynb', '/envs/a/bin/python'); await settle()
+    assert.deepEqual(h.saves.at(-1)?.python, { 'a.ipynb': '/envs/a/bin/python' }, JSON.stringify(h.saves))
+    assert.equal(h.notices.length, 0, JSON.stringify(h.notices))
+  })
+  // 读回来之前就选:换掉存着的一本(a)、改回自带(b,删掉)、新选一本(c);没动过的(old)要留着。
+  const earlyRun = async (outcome) => {
+    let release, fail
+    const gate = new Promise((res, rej) => { release = res; fail = rej })
+    const stored = { python: { 'old.ipynb': '/envs/old/bin/python', 'a.ipynb': '/envs/stale/bin/python', 'b.ipynb': '/envs/b/bin/python' } }
+    const h = await fresh(() => gate.then(() => JSON.parse(JSON.stringify(stored))))
+    h.P.choosePython?.('a.ipynb', '/envs/new/bin/python'); h.P.choosePython?.('b.ipynb', null); h.P.choosePython?.('c.ipynb', '/envs/c/bin/python')
+    await settle()
+    h.before = h.saves.length
+    if (outcome === 'ok') release(); else fail(unreadable())
+    await ready(h)
+    return h
+  }
+  await okA('偏好还没读回来就选了:读回来之前不写', async () => {
+    const h = await earlyRun('ok')
+    assert.equal(h.before, 0, '读回来之前就写了')
+  })
+  await okA('偏好还没读回来就选了:读回来之后存下的是原来的 + 新选的(换掉的、改回自带的不被旧值盖回)', async () => {
+    const h = await earlyRun('ok')
+    assert.deepEqual(h.saves.at(-1)?.python, { 'old.ipynb': '/envs/old/bin/python', 'a.ipynb': '/envs/new/bin/python', 'c.ipynb': '/envs/c/bin/python' }, JSON.stringify(h.saves))
+  })
+  await okA('偏好还没读回来就选了:读回来之后内存里也是新选的', async () => {
+    const h = await earlyRun('ok')
+    assert.deepEqual(['old.ipynb', 'a.ipynb', 'b.ipynb', 'c.ipynb'].map((k) => h.P.pythonFor?.(k)), ['/envs/old/bin/python', '/envs/new/bin/python', undefined, '/envs/c/bin/python'])
+  })
+  await okA('偏好还没读回来就选了、读出来是坏的:一次都不写,提示,选的这次照样用', async () => {
+    const h = await earlyRun('unreadable')
+    assert.equal(h.saves.length, 0, `写了 ${JSON.stringify(h.saves)}`)
+    assert.ok(h.notices.some((n) => n.m === tr('prefs.unreadable')), JSON.stringify(h.notices))
+    assert.equal(h.P.pythonFor?.('a.ipynb'), '/envs/new/bin/python')
   })
 }
 console.log(bad ? `\n${bad} 项没过` : '\n全部通过')

@@ -38,6 +38,8 @@ export const M: Record<string, [string, string]> = {
   'kernel.failed': ['Python 没能启动:{reason}', 'Python could not start: {reason}'],
   'kernel.lost': ['和 Python 进程的连接断了。再点一次运行会重新启动它,之前的变量不在了。', 'The connection to the Python process was lost. Run again to start it; earlier variables are gone.'],
   'kernel.restarted': ['内核已重启,之前的变量都清空了。', 'Kernel restarted. Earlier variables were cleared.'],
+  'prefs.unreadable': ['读不出已保存的 Python 环境选择,记住每本笔记本用哪个 Python 先停用,也不会保存改动,原来的选择没有动。这次笔记本先用 Forsion 自带的 Python;在内核菜单里换的只在这次有效。', 'Your saved Python choices could not be read. Remembering which Python each notebook uses is paused and nothing will be saved, so the original choices are left as they were. Notebooks use the Python bundled with Forsion for now, and a Python you pick from the kernel menu applies to this session only.'],
+  'prefs.notKept': ['这次选的 Python 只在这次有效,不会记住:已保存的环境选择读不出来,为了不盖掉原来的,先不保存。', 'This Python applies to this session only and won\'t be remembered. Your saved Python choices could not be read, so nothing is saved and the originals stay as they were.'],
 
   'cell.run': ['运行', 'Run'],
   'cell.stop': ['中断', 'Interrupt'],

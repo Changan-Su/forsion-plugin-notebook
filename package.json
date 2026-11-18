@@ -1,7 +1,7 @@
 {
   "name": "forsion-plugin-notebook",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Jupyter 笔记本:在 Forsion 里打开、编辑、运行 .ipynb(构建源;产物 main.js 与 tangu-plugins/notebook-kernel/dist 已提交)",
   "type": "module",
   "scripts": {
