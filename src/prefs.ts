@@ -10,6 +10,9 @@ import { t } from './i18n'
 const prefs: { python: Record<string, string> } = { python: {} }
 let loaded = false
 let blocked = false
+/** 插件已经停用 / 重载:排在读完之后的那次存盘别再写,新实例可能已经存了更新的选择。 */
+let disposed = false
+export const disposePrefs = (): void => { disposed = true }
 /** 读回来之前就选过的笔记本:读回来时不拿存着的旧选择盖掉(删掉的也不带回来)。 */
 const early = new Set<string>()
 const isDataUnreadable = (e: unknown): boolean => !!e && typeof e === 'object' && (e as { code?: unknown }).code === 'plugin-data-unreadable'
@@ -37,6 +40,7 @@ export function choosePython(path: string, python: string | null): void {
   if (!loaded) early.add(path)
   if (python) prefs.python[path] = python; else delete prefs.python[path]
   void prefsReady.then(() => {
+    if (disposed) return
     if (blocked) { ctx.notify?.(t('prefs.notKept'), { level: 'warning' }); return }
     return ctx.saveData?.(prefs)
   }).catch((e) => console.warn('[notebook] interpreter choice could not be saved', e))

@@ -206,6 +206,16 @@ if (existsSync('src/index.ts')) {
     await ready(h)
     return h
   }
+  await okA('偏好还没读回来就选了、插件接着被停用 / 重载:旧实例排着的那次不写(新实例可能已经存了更新的选择)', async () => {
+    let release
+    const gate = new Promise((res) => { release = res })
+    const h = await fresh(() => gate.then(() => ({ python: { 'old.ipynb': '/envs/old/bin/python' } })))
+    h.P.choosePython?.('a.ipynb', '/envs/a/bin/python')
+    h.P.disposePrefs?.()
+    release()
+    await ready(h)
+    assert.equal(h.saves.length, 0, JSON.stringify(h.saves))
+  })
   await okA('偏好还没读回来就选了:读回来之前不写', async () => {
     const h = await earlyRun('ok')
     assert.equal(h.before, 0, '读回来之前就写了')

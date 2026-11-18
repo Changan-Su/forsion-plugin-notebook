@@ -11,6 +11,7 @@ import { NotebookError, embedTarget, emptyNotebook, parse, serialize, source } f
 import { renderOutputs } from './outputs'
 import { esc, icon } from './icons'
 import { t } from './i18n'
+import { disposePrefs } from './prefs'
 
 function injectCss(): void {
   const ID = 'forsion-notebook-css'
@@ -110,6 +111,7 @@ document.addEventListener('visibilitychange', flushSoon)
 /** 宿主停用 / 重载插件时先调它(这时 ctx 还能用),build.mjs 的 footer 把它 return 给宿主。 */
 export default (): void => {
   flushAll()
+  disposePrefs()
   offLocale?.()
   window.removeEventListener('pagehide', flushAll)
   window.removeEventListener('blur', flushSoon)
