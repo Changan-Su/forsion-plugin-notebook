@@ -6,7 +6,7 @@ English: open, edit and run Jupyter notebooks inside Forsion. Files stay standar
 
 ## 安装
 
-Forsion 桌面端 → 商店 → 搜「Jupyter」→ 安装。需要 Forsion 桌面 2.13.0 或更新。当前版本 0.1.0。
+Forsion 桌面端 → 商店 → 搜「Jupyter」→ 安装。需要 Forsion 桌面 2.13.0 或更新。当前版本 0.1.1。
 
 Install from the Store inside Forsion Desktop (search for "Jupyter"). Requires Forsion Desktop 2.13.0 or later.
 

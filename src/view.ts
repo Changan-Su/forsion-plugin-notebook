@@ -14,6 +14,7 @@ import { NotebookError, OutputSink, headings, ids, newCell, parse, retype, seria
 import { renderOutputs } from './outputs'
 import { esc, icon } from './icons'
 import { t } from './i18n'
+import { choosePython, pythonFor } from './prefs'
 
 // 颜色照笔记里代码块的那一套:关键字和函数名一个色,字符串、数字各一个,注释斜体变淡;不加粗。
 const HL = HighlightStyle.define([
@@ -38,10 +39,6 @@ interface Poll extends KernelStatus { events: (RunEvent & { seq: number })[]; ga
 const ENGINE = 'notebook-kernel'
 const post = <T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> => ctx.tangu!.request!(ENGINE, path, { method: 'POST', body, signal }) as Promise<T>
 const errText = (e: unknown): string => e instanceof Error ? e.message : String(e)
-
-// ── 每本笔记本记住选的解释器(存在插件自己的数据里,不写进 .ipynb:本机路径不该跟着文件走) ──
-const prefs: { python: Record<string, string> } = { python: {} }
-void ctx.loadData?.<typeof prefs>().then((d) => { if (d?.python && typeof d.python === 'object') Object.assign(prefs.python, d.python) }).catch(() => {})
 
 // ── 右栏跟着「最近操作过的那本」走 ──
 const views = new Set<NotebookView>()
@@ -229,7 +226,7 @@ export class NotebookView {
 
   private kernelLabel(): { cls: string; text: string } {
     const k = this.kernel
-    const chosen = prefs.python[this.path]
+    const chosen = pythonFor(this.path)
     const who = k?.python ? (k.python.kind === 'bundled' ? t('kernel.bundled') : k.python.label) : chosen ? envName(chosen) : t('kernel.bundled')
     if (!k || k.state === 'dead') return { cls: 'off', text: `${who} · ${t(k ? 'kernel.dead' : 'kernel.off')}` }
     if (k.state === 'starting') return { cls: 'starting', text: `${who} · ${t('kernel.starting')}` }
@@ -490,7 +487,7 @@ export class NotebookView {
     const nb = this.abs
     if (!nb || this.opening || (this.kernel && this.kernel.state !== 'dead')) return
     try {
-      const s = await post<KernelStatus>('/status', { nb, python: prefs.python[this.path] })
+      const s = await post<KernelStatus>('/status', { nb, python: pythonFor(this.path) })
       if (this.dead || this.opening || (this.kernel && this.kernel.state !== 'dead') || s.state === 'dead') return
       this.since = s.head
       this.applyStatus(s)
@@ -504,7 +501,7 @@ export class NotebookView {
     this.kernel = { state: 'starting', python: null, head: 0 }
     this.paintBar()
     try {
-      const s = await post<KernelStatus>('/open', { nb, python: prefs.python[this.path], restart })
+      const s = await post<KernelStatus>('/open', { nb, python: pythonFor(this.path), restart })
       // 标签在启动途中关掉了:那时发的关闭请求比内核出现得早,这里补一刀,不留进程。
       if (this.dead) { void post('/shutdown', { nb }).catch(() => {}); return false }
       if (restart) { this.resetRuns(); this.vars = []; this.changed() }
@@ -728,12 +725,11 @@ export class NotebookView {
       m.innerHTML = `<div class="ctx-head">${esc(t('kernel.head'))}</div><div data-envs><div class="nb-menu-note">${esc(t('kernel.finding'))}</div></div><input data-custom spellcheck="false" placeholder="${esc(t('kernel.custom'))}"><div class="ctx-separator"></div>${act('restart', 'restart', t('bar.restart'))}${act('restartall', 'play', t('kernel.restartRunAll'))}${act('clearall', 'erase', t('kernel.clearAll'))}${alive ? `<div class="ctx-separator"></div>${act('shutdown', 'stop', t('kernel.shutdown'), 'danger')}` : ''}`
       const pick = (path: string | null): void => {
         close()
-        if (path) prefs.python[this.path] = path; else delete prefs.python[this.path]
-        void ctx.saveData?.(prefs)
+        choosePython(this.path, path)
         // 内核开着就换过去(变量会清空,和 Jupyter 换内核一样);没开就只记下,下次运行时用。
         if (alive) void this.restart(); else { this.asked = false; this.paintBar() }
       }
-      const using = this.kernel?.python?.path ?? prefs.python[this.path] ?? null
+      const using = this.kernel?.python?.path ?? pythonFor(this.path) ?? null
       void post<{ envs: EnvInfo[] }>('/envs', { nb: this.abs }).then(({ envs }) => {
         const box = m.querySelector('[data-envs]')
         if (!box) return
